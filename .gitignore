@@ -4,13 +4,3 @@
 .env
 .DS_Store
 __pycache__
-.agentlab.db
-.agentlab
-.agentlab/snapshots
-.agentlab/runs
-.agentlab/samples
-.agentlab/logs
-.agentlab/prompts
-.agentlab/tools
-.agentlab/evals
-.agentlab/metrics
