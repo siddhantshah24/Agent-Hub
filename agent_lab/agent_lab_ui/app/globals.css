@@ -1,0 +1,191 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+/* ── Light (minimal — we only care about dark) ─────────────────────────────── */
+:root {
+  --background: oklch(0.98 0 0);
+  --foreground: oklch(0.12 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.12 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.12 0 0);
+  --primary: oklch(0.55 0.25 290);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.94 0.01 280);
+  --secondary-foreground: oklch(0.25 0 0);
+  --muted: oklch(0.94 0.01 280);
+  --muted-foreground: oklch(0.50 0 0);
+  --accent: oklch(0.55 0.25 290);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.60 0.22 27);
+  --border: oklch(0.88 0.005 280);
+  --input: oklch(0.88 0.005 280);
+  --ring: oklch(0.55 0.25 290);
+  --chart-1: oklch(0.55 0.25 290);
+  --chart-2: oklch(0.72 0.17 162);
+  --chart-3: oklch(0.78 0.17 85);
+  --chart-4: oklch(0.65 0.22 27);
+  --chart-5: oklch(0.60 0.20 200);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.96 0.005 280);
+  --sidebar-foreground: oklch(0.12 0 0);
+  --sidebar-primary: oklch(0.55 0.25 290);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.92 0.01 280);
+  --sidebar-accent-foreground: oklch(0.25 0 0);
+  --sidebar-border: oklch(0.88 0.005 280);
+  --sidebar-ring: oklch(0.55 0.25 290);
+}
+
+/* ── Dark: Lifted Midnight Purple (~#1C1830 bg, much more readable) ─────────── */
+.dark {
+  /* Background ~#1C1830 — visibly lighter than before, still clearly dark */
+  --background: oklch(0.145 0.028 283);
+  /* Surface ~#231F3A */
+  --card: oklch(0.175 0.032 280);
+  --card-foreground: oklch(0.95 0.012 270);
+  --popover: oklch(0.175 0.032 280);
+  --popover-foreground: oklch(0.95 0.012 270);
+  /* Border ~#3D3860 — clearly visible */
+  --border: oklch(0.285 0.042 276);
+  --input: oklch(0.22 0.035 278);
+  /* violet-400 ~#A78BFA — brighter, more readable */
+  --primary: oklch(0.68 0.22 291);
+  --primary-foreground: oklch(0.10 0.02 280);
+  /* Text: warm near-white with slight lavender */
+  --foreground: oklch(0.95 0.012 268);
+  /* Muted: ~#9B97BB — much more readable than old #64748B */
+  --muted-foreground: oklch(0.68 0.030 272);
+  --muted: oklch(0.20 0.030 280);
+  --secondary: oklch(0.21 0.032 278);
+  --secondary-foreground: oklch(0.82 0.018 268);
+  --accent: oklch(0.68 0.22 291);
+  --accent-foreground: oklch(0.10 0.02 280);
+  --destructive: oklch(0.68 0.20 12);
+  --ring: oklch(0.68 0.22 291);
+  /* Chart */
+  --chart-1: oklch(0.68 0.22 291);
+  --chart-2: oklch(0.76 0.17 162);
+  --chart-3: oklch(0.80 0.16 85);
+  --chart-4: oklch(0.68 0.20 12);
+  --chart-5: oklch(0.72 0.17 205);
+  --sidebar: oklch(0.155 0.030 282);
+  --sidebar-foreground: oklch(0.95 0.012 270);
+  --sidebar-primary: oklch(0.68 0.22 291);
+  --sidebar-primary-foreground: oklch(0.10 0.02 280);
+  --sidebar-accent: oklch(0.21 0.032 278);
+  --sidebar-accent-foreground: oklch(0.82 0.018 268);
+  --sidebar-border: oklch(0.285 0.042 276);
+  --sidebar-ring: oklch(0.68 0.22 291);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  body { @apply bg-background text-foreground; }
+  html { @apply font-sans; }
+}
+
+/* ── Background: subtle grid + top purple glow ──────────────────────────────── */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(167, 139, 250, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(167, 139, 250, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card-surface {
+  background: #231F3A;
+  border: 1px solid #3D3860;
+  border-radius: 12px;
+  transition: border-color 0.2s;
+}
+.card-surface:hover {
+  border-color: rgba(167, 139, 250, 0.50);
+}
+
+/* ── Diff line types ────────────────────────────────────────────────────────── */
+.diff-delete {
+  background-color: rgba(251, 113, 133, 0.10);
+  border-left: 2px solid rgba(251, 113, 133, 0.70);
+}
+.diff-insert {
+  background-color: rgba(52, 211, 153, 0.08);
+  border-left: 2px solid rgba(52, 211, 153, 0.60);
+}
+.diff-equal {
+  border-left: 2px solid transparent;
+}
+
+/* ── Nav links ───────────────────────────────────────────────────────────────── */
+.nav-link {
+  color: #9B97BB;
+}
+.nav-link:hover {
+  color: #EDE9F8;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Glow utilities ─────────────────────────────────────────────────────────── */
+.glow-purple {
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
+}
+.glow-purple-sm {
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
+}
+
+/* ── Pill badge ─────────────────────────────────────────────────────────────── */
+.badge-pass {
+  background: rgba(52, 211, 153, 0.12);
+  color: #34D399;
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+.badge-fail {
+  background: rgba(251, 113, 133, 0.12);
+  color: #FB7185;
+  border: 1px solid rgba(251, 113, 133, 0.25);
+}

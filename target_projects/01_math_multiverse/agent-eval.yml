@@ -1,0 +1,8 @@
+agent:
+  # Strict-compliance math agent using langchain-benchmarks Multiverse Math env
+  entrypoint: "src.graph:run_agent"
+
+dataset:
+  path: "datasets/math_evals.jsonl"
+  input_key: "question"
+  expected_output_key: "answer"
