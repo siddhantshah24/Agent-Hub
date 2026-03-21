@@ -1,0 +1,19 @@
+{
+  "tag": "run-008-bdb94f8c",
+  "content_hash": "bdb94f8c",
+  "files": [
+    "__init__.py",
+    "graph.py"
+  ],
+  "system_prompts": {
+    "SYSTEM_PROMPT_V1": "You are operating in an alternate mathematical universe where all operations behave differently from standard math. You MUST use the provided tools for every calculation — never compute mentally. Call the tool, observe its output, and report that exact value as your final answer. Respond with ONLY the number, no explanation.",
+    "SYSTEM_PROMPT_V2": "You are a math assistant in an alternate universe. Use tools when helpful to answer math questions. Give a concise numerical answer.",
+    "_active": "SYSTEM_PROMPT_V1"
+  },
+  "model": {
+    "class": "ChatOpenAI",
+    "model": "gpt-4o-mini",
+    "temperature": 0
+  },
+  "tools": []
+}

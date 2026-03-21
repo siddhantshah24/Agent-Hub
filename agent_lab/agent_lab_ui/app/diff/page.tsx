@@ -7,7 +7,7 @@ import {
   List, CheckCircle2, XCircle, TrendingUp, TrendingDown,
   Minus, Zap, DollarSign, Activity, Terminal, ExternalLink,
   ArrowRight, ChevronDown, ChevronRight, Wrench, Brain,
-  MessageSquare, Hash, Clock, AlertCircle, Loader2,
+  MessageSquare, Hash, Clock, AlertCircle, Loader2, Cpu,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -696,8 +696,13 @@ type TabId = (typeof TABS)[number]["id"];
 // ── Main ──────────────────────────────────────────────────────────────────────
 function DiffContent() {
   const params = useSearchParams();
-  const v1 = params.get("v1") ?? "";
-  const v2 = params.get("v2") ?? "";
+  const v1      = params.get("v1") ?? "";
+  const v2      = params.get("v2") ?? "";
+  const project = params.get("project") ?? "";
+
+  // Build the project query string once so every fetch uses the right DB
+  const pq = project ? `?project=${encodeURIComponent(project)}` : "";
+  const pqAmp = project ? `&project=${encodeURIComponent(project)}` : "";
 
   const [tab, setTab] = useState<TabId>("compare");
   const [diff,    setDiff]    = useState<DiffData | null>(null);
@@ -705,6 +710,9 @@ function DiffContent() {
   const [samples, setSamples] = useState<SampleRow[]>([]);
   const [v1Traces, setV1Traces] = useState<Record<number, TraceInfo>>({});
   const [v2Traces, setV2Traces] = useState<Record<number, TraceInfo>>({});
+  // Structured snapshot metadata (system prompts, model, tools) from snapshot.json
+  const [v1Snap, setV1Snap] = useState<Record<string, any> | null>(null);
+  const [v2Snap, setV2Snap] = useState<Record<string, any> | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [tracesLoading, setTracesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -713,21 +721,28 @@ function DiffContent() {
     if (!v1 || !v2) return;
     setLoading(true);
     Promise.all([
-      fetch(`${API}/api/diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}`).then(r => r.ok ? r.json() : Promise.reject(r.statusText)),
-      fetch(`${API}/api/snapshot-diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API}/api/samples-compare/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/api/diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : Promise.reject(r.statusText)),
+      fetch(`${API}/api/snapshot-diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API}/api/samples-compare/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : []),
+      // Fetch structured snapshot metadata for both versions
+      fetch(`${API}/api/snapshot/${encodeURIComponent(v1)}${pq}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API}/api/snapshot/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : null),
     ])
-      .then(([d, s, samps]) => { setDiff(d); setSnap(s); setSamples(samps); setLoading(false); })
+      .then(([d, s, samps, s1, s2]) => {
+        setDiff(d); setSnap(s); setSamples(samps);
+        setV1Snap(s1); setV2Snap(s2);
+        setLoading(false);
+      })
       .catch(e => { setError(String(e)); setLoading(false); });
-  }, [v1, v2]);
+  }, [v1, v2, pq]);
 
   // Fetch Langfuse traces separately (slower, don't block the page)
   useEffect(() => {
     if (!v1 || !v2) return;
     setTracesLoading(true);
     Promise.all([
-      fetch(`${API}/api/traces/${encodeURIComponent(v1)}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
-      fetch(`${API}/api/traces/${encodeURIComponent(v2)}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
+      fetch(`${API}/api/traces/${encodeURIComponent(v1)}${pq}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
+      fetch(`${API}/api/traces/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
     ])
       .then(([t1Resp, t2Resp]) => {
         const t1Map: Record<number, TraceInfo> = {};
@@ -739,7 +754,7 @@ function DiffContent() {
         setTracesLoading(false);
       })
       .catch(() => setTracesLoading(false));
-  }, [v1, v2]);
+  }, [v1, v2, pq]);
 
   if (!v1 || !v2) return (
     <div className="flex items-center justify-center h-64" style={{ color: MUTED }}>No versions specified.</div>
@@ -753,7 +768,15 @@ function DiffContent() {
   );
 
   if (error || !diff) return (
-    <div className="flex items-center justify-center h-64" style={{ color: ROSE }}>Error: {error ?? "Unknown"}</div>
+    <div className="flex flex-col items-center justify-center h-64 gap-3" style={{ color: ROSE }}>
+      <p className="font-semibold">Failed to load comparison</p>
+      <p className="text-sm font-mono px-4 py-2 rounded" style={{ background: "rgba(255,122,150,0.08)", border: "1px solid rgba(255,122,150,0.2)", color: "#FF9EB0", maxWidth: "480px", textAlign: "center" }}>
+        {error ?? "No data returned from API"}
+      </p>
+      <p className="text-xs" style={{ color: MUTED }}>
+        Make sure <span className="font-mono">agentlab ui</span> is running and both versions exist in the same project.
+      </p>
+    </div>
   );
 
   const snapOk = snap?.available && snap.diff_lines;
@@ -764,7 +787,7 @@ function DiffContent() {
 
       {/* Header */}
       <div className="flex items-center gap-4 flex-wrap">
-        <a href="/" className="nav-link flex items-center gap-1.5 text-sm transition-colors">
+        <a href={project ? `/?project=${encodeURIComponent(project)}` : "/"} className="nav-link flex items-center gap-1.5 text-sm transition-colors">
           <ArrowLeft size={14} /> Overview
         </a>
 
@@ -851,7 +874,87 @@ function DiffContent() {
       )}
       {tab === "metrics" && <MetricsTab diff={diff} samples={samples} v1={v1} v2={v2} />}
       {tab === "diff" && (
-        <div className="space-y-3">
+        <div className="space-y-6">
+          {/* System Prompt comparison from snapshot.json */}
+          {(v1Snap?.system_prompts || v2Snap?.system_prompts) && (() => {
+            const p1 = v1Snap?.system_prompts ?? {};
+            const p2 = v2Snap?.system_prompts ?? {};
+            const active1 = p1["_active"];
+            const active2 = p2["_active"];
+            const text1 = active1 ? p1[active1] : Object.values(p1).filter((_, i) => Object.keys(p1)[i] !== "_active")[0];
+            const text2 = active2 ? p2[active2] : Object.values(p2).filter((_, i) => Object.keys(p2)[i] !== "_active")[0];
+            const promptChanged = text1 !== text2;
+            return (
+              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                <div className="flex items-center gap-3 px-4 py-3" style={{ background: "#1A1729", borderBottom: `1px solid ${BORDER}` }}>
+                  <MessageSquare size={13} style={{ color: PURPLE }} />
+                  <span className="text-sm font-semibold text-slate-200">System Prompt Comparison</span>
+                  {promptChanged ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded ml-auto" style={{ color: ROSE, background: "rgba(255,122,150,0.12)", border: "1px solid rgba(255,122,150,0.3)" }}>changed</span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded ml-auto" style={{ color: EMERALD, background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.3)" }}>identical</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 divide-x" style={{ divideColor: BORDER } as any}>
+                  {[{ label: v1, text: text1 as string, snap: active1 }, { label: v2, text: text2 as string, snap: active2 }].map(({ label, text, snap: activeVar }) => (
+                    <div key={label} className="p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest mb-2 font-mono" style={{ color: MUTED }}>
+                        {label} {activeVar && <span style={{ color: PURPLE }}>— {activeVar}</span>}
+                      </p>
+                      <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words"
+                        style={{ fontFamily: MONO, color: text ? "#C9D1D9" : MUTED }}>
+                        {text ?? "(no system prompt detected)"}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Model comparison */}
+          {(v1Snap?.model || v2Snap?.model) && (() => {
+            const m1 = v1Snap?.model ?? {};
+            const m2 = v2Snap?.model ?? {};
+            const allKeys = Array.from(new Set([...Object.keys(m1), ...Object.keys(m2)]));
+            const anyDiff = allKeys.some(k => m1[k] !== m2[k]);
+            return (
+              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                <div className="flex items-center gap-3 px-4 py-3" style={{ background: "#1A1729", borderBottom: `1px solid ${BORDER}` }}>
+                  <Cpu size={13} style={{ color: PURPLE }} />
+                  <span className="text-sm font-semibold text-slate-200">Model Configuration</span>
+                  {anyDiff ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded ml-auto" style={{ color: ROSE, background: "rgba(255,122,150,0.12)", border: "1px solid rgba(255,122,150,0.3)" }}>changed</span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded ml-auto" style={{ color: EMERALD, background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.3)" }}>identical</span>
+                  )}
+                </div>
+                <table className="w-full text-xs font-mono">
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                      <th className="px-4 py-2 text-left" style={{ color: MUTED, width: "120px" }}>Key</th>
+                      <th className="px-4 py-2 text-left" style={{ color: MUTED }}>{v1}</th>
+                      <th className="px-4 py-2 text-left" style={{ color: MUTED }}>{v2}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allKeys.map(k => {
+                      const diff = m1[k] !== m2[k];
+                      return (
+                        <tr key={k} style={{ borderBottom: `1px solid ${BORDER}`, background: diff ? "rgba(255,122,150,0.04)" : undefined }}>
+                          <td className="px-4 py-2" style={{ color: MUTED }}>{k}</td>
+                          <td className="px-4 py-2" style={{ color: diff ? ROSE : "text-slate-300" }}>{String(m1[k] ?? "—")}</td>
+                          <td className="px-4 py-2" style={{ color: diff ? EMERALD : "text-slate-300" }}>{String(m2[k] ?? "—")}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {/* Code diff */}
           {!snapOk ? (
             <div className="rounded-xl p-12 text-center" style={{ background: SURF, border: `1px solid ${BORDER}`, color: MUTED }}>
               <p className="text-2xl mb-2">📸</p>
@@ -859,10 +962,16 @@ function DiffContent() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between text-xs" style={{ color: MUTED, fontFamily: MONO }}>
-                <span>{snap!.filename}</span>
-                {hasCodeChanges && (
-                  <span><span style={{ color: EMERALD }}>+{snap!.stats!.added}</span> <span style={{ color: ROSE }}>−{snap!.stats!.removed}</span></span>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "#1A1729", border: `1px solid ${BORDER}` }}>
+                <Code2 size={13} style={{ color: PURPLE }} />
+                <span className="text-sm font-semibold text-slate-200 font-mono">{snap!.filename}</span>
+                {hasCodeChanges ? (
+                  <span className="ml-auto text-xs font-mono">
+                    <span style={{ color: EMERALD }}>+{snap!.stats!.added}</span>{" "}
+                    <span style={{ color: ROSE }}>−{snap!.stats!.removed}</span>
+                  </span>
+                ) : (
+                  <span className="ml-auto text-xs" style={{ color: EMERALD }}>No code changes</span>
                 )}
               </div>
               <CodeDiffViewer diffLines={snap!.diff_lines!} filename={snap!.filename!} />

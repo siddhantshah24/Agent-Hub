@@ -1,0 +1,70 @@
+{
+  "tag": "run-004-a943215f",
+  "content_hash": "a943215f",
+  "files": [
+    "__init__.py",
+    "database.py",
+    "graph.py"
+  ],
+  "system_prompts": {
+    "SYSTEM_PROMPT_V1": "You are a precise enterprise data analyst with access to a SQLite database.\n\nREQUIRED PROCESS — follow these steps for every question:\n1. Call list_tables() to see what tables exist.\n2. Call get_schema() for each table you need to understand.\n3. Write a correct SQL SELECT query with proper JOINs if the data spans tables.\n4. Execute the query with query_db() and return the exact value.\n\nRULES:\n- Never guess column names or table structure — always inspect the schema.\n- Use JOIN queries to answer multi-hop questions (e.g. user → location → city).\n- Return ONLY the raw answer value — no explanations, no markdown.\n- If a column contains a JSON array, return it as-is.",
+    "SYSTEM_PROMPT_V2": "You are a data analyst with access to a SQL database.\nUse the available tools to answer questions about users, locations, and foods.\nBe concise and return just the answer.",
+    "_active": "SYSTEM_PROMPT_V1"
+  },
+  "model": {
+    "class": "ChatOpenAI",
+    "model": "gpt-4o-mini",
+    "temperature": 0
+  },
+  "tools": [
+    {
+      "name": "list_tables",
+      "description": "List all tables available in the enterprise database.\nAlways call this first to understand what data is available.",
+      "source": "inline",
+      "schema": {
+        "title": "list_tablesSchema",
+        "description": "List all tables available in the enterprise database.\nAlways call this first to understand what data is available.",
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_schema",
+      "description": "Get the column names and types for a specific table.\nAlways inspect the schema before writing a query.\n\nArgs:\n    table_name: Name of the table (from list_tables).",
+      "source": "inline",
+      "schema": {
+        "title": "get_schemaSchema",
+        "description": "Get the column names and types for a specific table.\nAlways inspect the schema before writing a query.\n\nArgs:\n    table_name: Name of the table (from list_tables).",
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_name"
+        ]
+      }
+    },
+    {
+      "name": "query_db",
+      "description": "Execute a SELECT SQL query against the enterprise database.\nReturns results as a JSON-formatted list of rows.\n\nRules:\n- Only SELECT statements are allowed.\n- Use JOINs when the question requires data from multiple tables.\n- ALWAYS inspect the schema with get_schema() before writing a query.\n\nArgs:\n    sql: A valid SELECT SQL query.",
+      "source": "inline",
+      "schema": {
+        "title": "query_dbSchema",
+        "description": "Execute a SELECT SQL query against the enterprise database.\nReturns results as a JSON-formatted list of rows.\n\nRules:\n- Only SELECT statements are allowed.\n- Use JOINs when the question requires data from multiple tables.\n- ALWAYS inspect the schema with get_schema() before writing a query.\n\nArgs:\n    sql: A valid SELECT SQL query.",
+        "type": "object",
+        "properties": {
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ]
+      }
+    }
+  ]
+}

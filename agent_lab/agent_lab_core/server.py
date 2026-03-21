@@ -39,6 +39,29 @@ def _db_path() -> Path:
     return Path.cwd() / ".agentlab.db"
 
 
+def _get_all_dbs() -> dict[str, Path]:
+    """Discover all project DBs under AGENTLAB_PROJECTS_ROOT."""
+    projects_root = os.environ.get("AGENTLAB_PROJECTS_ROOT")
+    if projects_root:
+        root = Path(projects_root)
+        dbs: dict[str, Path] = {}
+        for db in sorted(root.glob("*/.agentlab.db")):
+            name = db.parent.name
+            dbs[name] = db
+        if dbs:
+            return dbs
+    # Single-project fallback
+    db = _db_path()
+    return {"default": db}
+
+
+def _db_for_project(project: Optional[str]) -> Path:
+    if not project or project == "default":
+        return _db_path()
+    all_dbs = _get_all_dbs()
+    return all_dbs.get(project, _db_path())
+
+
 def _openai_client() -> OpenAI:
     return OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
@@ -47,17 +70,36 @@ def _openai_client() -> OpenAI:
 # Routes
 # ---------------------------------------------------------------------------
 
+@app.get("/api/projects")
+def get_projects():
+    """List all available projects/agents discovered from AGENTLAB_PROJECTS_ROOT."""
+    all_dbs = _get_all_dbs()
+    result = []
+    for name, db_path in all_dbs.items():
+        runs = get_all_runs(db_path) if db_path.exists() else []
+        # Turn "01_math_multiverse" → "Math Multiverse"
+        parts = name.split("_", 1)
+        display = parts[-1].replace("_", " ").title() if len(parts) > 1 else name.replace("_", " ").title()
+        result.append({
+            "name": name,
+            "display_name": display,
+            "run_count": len(runs),
+            "latest_success_rate": runs[-1]["success_rate"] if runs else None,
+        })
+    return result
+
+
 @app.get("/api/versions")
-def get_versions():
-    db = _db_path()
+def get_versions(project: Optional[str] = None):
+    db = _db_for_project(project)
     if not db.exists():
         return []
     return get_all_runs(db)
 
 
 @app.get("/api/samples/{tag}")
-def get_samples(tag: str):
-    db = _db_path()
+def get_samples(tag: str, project: Optional[str] = None):
+    db = _db_for_project(project)
     if not db.exists():
         raise HTTPException(404, "No database found.")
     samples = get_samples_for_tag(db, tag)
@@ -66,10 +108,77 @@ def get_samples(tag: str):
     return samples
 
 
+@app.get("/api/snapshot/{tag}")
+def get_snapshot(tag: str, project: Optional[str] = None):
+    """
+    Return structured snapshot data for a single version.
+    Includes:
+      - metadata from snapshot.json (system_prompts, model, tools)
+      - raw source code of the main graph file (for Code tab)
+      - list of all snapshotted files
+    """
+    db = _db_for_project(project)
+    run = get_run_by_tag(db, tag)
+    if not run:
+        raise HTTPException(404, f"Version '{tag}' not found.")
+
+    snapshot_path = run.get("snapshot_path")
+    if not snapshot_path:
+        return {"available": False, "reason": "No snapshot captured for this version."}
+
+    snap_dir = Path(snapshot_path)
+
+    # Support old single-file snapshots (snapshot_path pointed to graph.py)
+    if snap_dir.suffix == ".py":
+        snap_dir = snap_dir.parent
+
+    if not snap_dir.exists():
+        return {"available": False, "reason": "Snapshot directory not found on disk."}
+
+    # Read structured metadata
+    meta: dict = {}
+    meta_file = snap_dir / "snapshot.json"
+    if meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text())
+        except Exception:
+            pass
+
+    # Raw source: prefer graph.py, fall back to first .py file
+    raw_content: Optional[str] = None
+    raw_filename: Optional[str] = None
+    for candidate in ["graph.py", "agent.py"]:
+        f = snap_dir / candidate
+        if f.exists():
+            raw_content = f.read_text()
+            raw_filename = candidate
+            break
+    if raw_content is None:
+        py_files = sorted(snap_dir.glob("*.py"))
+        if py_files:
+            raw_content = py_files[0].read_text()
+            raw_filename = py_files[0].name
+
+    all_files = [f.name for f in sorted(snap_dir.glob("*.py"))]
+
+    return {
+        "available": True,
+        "tag": tag,
+        "filename": raw_filename,
+        "content": raw_content,
+        "files": all_files,
+        # Structured fields from snapshot.json
+        "system_prompts": meta.get("system_prompts", {}),
+        "model": meta.get("model", {}),
+        "tools": meta.get("tools", []),
+        "content_hash": meta.get("content_hash") or run.get("content_hash"),
+    }
+
+
 @app.get("/api/diff/{v1}/{v2}")
-def get_diff(v1: str, v2: str):
+def get_diff(v1: str, v2: str, project: Optional[str] = None):
     """Metric deltas + sample regressions + GPT-4o-mini behavioral summary."""
-    db = _db_path()
+    db = _db_for_project(project)
     if not db.exists():
         raise HTTPException(404, "No database found.")
 
@@ -129,12 +238,12 @@ def get_diff(v1: str, v2: str):
 
 
 @app.get("/api/snapshot-diff/{v1}/{v2}")
-def get_snapshot_diff(v1: str, v2: str):
+def get_snapshot_diff(v1: str, v2: str, project: Optional[str] = None):
     """
     Line-by-line code diff of the agent snapshot files for two versions.
-    Snapshots are captured automatically by the runner at eval time.
+    Handles both old (single .py file) and new (directory + snapshot.json) formats.
     """
-    db = _db_path()
+    db = _db_for_project(project)
     run1 = get_run_by_tag(db, v1)
     run2 = get_run_by_tag(db, v2)
 
@@ -143,13 +252,34 @@ def get_snapshot_diff(v1: str, v2: str):
     if not run2:
         raise HTTPException(404, f"Version '{v2}' not found.")
 
-    def _read(path: Optional[str]) -> Optional[str]:
-        if path and Path(path).exists():
-            return Path(path).read_text()
-        return None
+    def _read_snapshot_content(raw_path: Optional[str]) -> tuple[Optional[str], str]:
+        """
+        Returns (content, filename).
+        Handles:
+          - old format: snapshot_path points to a .py file
+          - new format: snapshot_path points to a directory containing graph.py
+        """
+        if not raw_path:
+            return None, "graph.py"
+        p = Path(raw_path)
+        if not p.exists():
+            return None, "graph.py"
+        if p.is_file():
+            return p.read_text(), p.name
+        if p.is_dir():
+            # New format — prefer graph.py, fall back to first .py file
+            for candidate in ["graph.py", "agent.py"]:
+                f = p / candidate
+                if f.exists():
+                    return f.read_text(), candidate
+            py_files = sorted(p.glob("*.py"))
+            if py_files:
+                return py_files[0].read_text(), py_files[0].name
+        return None, "graph.py"
 
-    v1_content = _read(run1.get("snapshot_path"))
-    v2_content = _read(run2.get("snapshot_path"))
+    v1_content, v1_filename = _read_snapshot_content(run1.get("snapshot_path"))
+    v2_content, v2_filename = _read_snapshot_content(run2.get("snapshot_path"))
+    filename = v1_filename or v2_filename or "graph.py"
 
     if not v1_content and not v2_content:
         return {
@@ -174,28 +304,28 @@ def get_snapshot_diff(v1: str, v2: str):
             for j in range(j1, j2):
                 diff_lines.append({"type": "insert", "content": v2_lines[j], "v1_no": None, "v2_no": j + 1})
 
-    added = sum(1 for l in diff_lines if l["type"] == "insert")
-    removed = sum(1 for l in diff_lines if l["type"] == "delete")
+    added   = sum(1 for ln in diff_lines if ln["type"] == "insert")
+    removed = sum(1 for ln in diff_lines if ln["type"] == "delete")
 
     return {
         "available": True,
         "v1_path": run1.get("snapshot_path"),
         "v2_path": run2.get("snapshot_path"),
-        "filename": Path(run1.get("snapshot_path", "graph.py")).name,
+        "filename": filename,
         "diff_lines": diff_lines,
         "stats": {
             "added": added,
             "removed": removed,
-            "unchanged": sum(1 for l in diff_lines if l["type"] == "equal"),
+            "unchanged": sum(1 for ln in diff_lines if ln["type"] == "equal"),
             "has_changes": added > 0 or removed > 0,
         },
     }
 
 
 @app.get("/api/samples-compare/{v1}/{v2}")
-def get_samples_compare(v1: str, v2: str):
+def get_samples_compare(v1: str, v2: str, project: Optional[str] = None):
     """Full side-by-side sample table for both versions."""
-    db = _db_path()
+    db = _db_for_project(project)
     samples1 = {s["sample_idx"]: s for s in get_samples_for_tag(db, v1)}
     samples2 = {s["sample_idx"]: s for s in get_samples_for_tag(db, v2)}
 

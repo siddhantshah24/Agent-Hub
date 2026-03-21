@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 import typer
 from dotenv import find_dotenv, load_dotenv
@@ -87,9 +88,19 @@ def init():
 
 @app.command()
 def eval(
-    tag: str = typer.Option(..., "--tag", "-t", help="Version tag for this run (e.g. v1, prompt-v2)"),
+    tag: Optional[str] = typer.Option(
+        None, "--tag", "-t",
+        help="Version tag (e.g. v1, prompt-v2). Omit to auto-generate from content hash.",
+    ),
     config: Path = typer.Option(
         None, "--config", "-c", help="Path to agent-eval.yml (default: ./agent-eval.yml)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite an existing tag instead of erroring.",
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n",
+        help="Only run the first N samples. Useful for quick smoke tests.",
     ),
 ):
     """Run evaluation against the golden dataset and record metrics."""
@@ -106,18 +117,25 @@ def eval(
             "Add it to your .env file for full observability."
         )
 
-    run_evaluation(
-        config=eval_config,
-        tag=tag,
-        project_root=_project_root(),
-        db_path=_db_path(),
-        langfuse_public_key=env["LANGFUSE_PUBLIC_KEY"],
-        langfuse_secret_key=env["LANGFUSE_SECRET_KEY"],
-        langfuse_host=env["LANGFUSE_HOST"],
-    )
+    try:
+        result = run_evaluation(
+            config=eval_config,
+            tag=tag,
+            project_root=_project_root(),
+            db_path=_db_path(),
+            langfuse_public_key=env["LANGFUSE_PUBLIC_KEY"],
+            langfuse_secret_key=env["LANGFUSE_SECRET_KEY"],
+            langfuse_host=env["LANGFUSE_HOST"],
+            force=force,
+            limit=limit,
+        )
+    except ValueError as e:
+        console.print(f"[red bold]Error:[/] {e}")
+        raise typer.Exit(1)
 
+    final_tag = result.get("tag", tag)
     console.print(
-        f"\n[bold green]Done![/] Run saved as [bold]{tag}[/]. "
+        f"\n[bold green]Done![/] Run saved as [bold]{final_tag}[/]. "
         "Start the dashboard with [bold]agentlab ui[/]"
     )
 
@@ -160,7 +178,18 @@ def ui(
     agent_lab_root = Path(__file__).parent.parent.resolve()
     ui_dir = agent_lab_root / "agent_lab_ui"
 
+    # Auto-detect a target_projects/ directory by scanning upward from cwd
+    projects_root: Optional[str] = None
+    for parent in [_project_root(), *_project_root().parents]:
+        candidate = parent / "target_projects"
+        if candidate.exists() and candidate.is_dir():
+            projects_root = str(candidate)
+            break
+
     env = {**os.environ, **_load_env(), "AGENTLAB_DB": str(_db_path())}
+    if projects_root:
+        env["AGENTLAB_PROJECTS_ROOT"] = projects_root
+        console.print(f"  Projects  → {projects_root}")
 
     console.print(f"[bold cyan]Starting Agent Lab UI[/]")
     console.print(f"  API   → http://localhost:{api_port}")

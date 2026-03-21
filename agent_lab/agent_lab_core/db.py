@@ -19,18 +19,19 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path) -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, and migrate existing schemas."""
     with _connect(db_path) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS runs (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                version_tag   TEXT    NOT NULL UNIQUE,
-                success_rate  REAL    NOT NULL,
-                avg_latency_ms REAL   NOT NULL,
-                avg_cost_usd  REAL    NOT NULL,
-                total_cases   INTEGER NOT NULL,
-                snapshot_path TEXT,
-                timestamp     TEXT    NOT NULL
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                version_tag    TEXT    NOT NULL UNIQUE,
+                success_rate   REAL    NOT NULL,
+                avg_latency_ms REAL    NOT NULL,
+                avg_cost_usd   REAL    NOT NULL,
+                total_cases    INTEGER NOT NULL,
+                snapshot_path  TEXT,
+                content_hash   TEXT,
+                timestamp      TEXT    NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS run_samples (
@@ -44,6 +45,10 @@ def init_db(db_path: Path) -> None:
                 latency_ms  REAL    NOT NULL
             );
         """)
+        # Migrate older DBs that predate content_hash
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "content_hash" not in existing:
+            conn.execute("ALTER TABLE runs ADD COLUMN content_hash TEXT")
 
 
 def insert_run(
@@ -54,6 +59,7 @@ def insert_run(
     avg_cost_usd: float,
     total_cases: int,
     snapshot_path: Optional[str] = None,
+    content_hash: Optional[str] = None,
 ) -> int:
     """Insert an aggregated run record. Returns the new run id."""
     ts = datetime.utcnow().isoformat()
@@ -62,13 +68,33 @@ def insert_run(
             """
             INSERT OR REPLACE INTO runs
                 (version_tag, success_rate, avg_latency_ms, avg_cost_usd,
-                 total_cases, snapshot_path, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 total_cases, snapshot_path, content_hash, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (version_tag, success_rate, avg_latency_ms, avg_cost_usd,
-             total_cases, snapshot_path, ts),
+             total_cases, snapshot_path, content_hash, ts),
         )
         return cur.lastrowid
+
+
+def tag_exists(db_path: Path, version_tag: str) -> bool:
+    """Return True if a run with this tag already exists."""
+    if not db_path.exists():
+        return False
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM runs WHERE version_tag = ?", (version_tag,)
+        ).fetchone()
+    return row is not None
+
+
+def get_run_count(db_path: Path) -> int:
+    """Return total number of runs recorded."""
+    if not db_path.exists():
+        return 0
+    with _connect(db_path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM runs").fetchone()
+    return row[0] if row else 0
 
 
 def insert_samples(db_path: Path, run_id: int, samples: list[dict]) -> None:
