@@ -1,0 +1,15 @@
+{"question": "How do I deposit a cheque issued to an associate into my business account?", "expected": "endorse"}
+{"question": "What causes inflation to rise in an economy?", "expected": "money supply"}
+{"question": "How can someone with bad credit but good cash flow get a loan?", "expected": "credit"}
+{"question": "What is the difference between a 401k and a Roth IRA?", "expected": "tax"}
+{"question": "How does short selling work and what are the risks?", "expected": "borrow"}
+{"question": "What documents do I need to open a business bank account?", "expected": "EIN"}
+{"question": "How is credit card interest calculated on a monthly balance?", "expected": "APR"}
+{"question": "What is tax loss harvesting and how does it reduce taxes?", "expected": "capital gains"}
+{"question": "How does compound interest differ from simple interest?", "expected": "principal"}
+{"question": "What are the key steps to buy a house with a mortgage?", "expected": "down payment"}
+{"question": "How do credit bureaus collect and share financial data?", "expected": "credit report"}
+{"question": "What is the purpose of an emergency fund and how large should it be?", "expected": "months"}
+{"question": "How do employee stock options work at a startup?", "expected": "vesting"}
+{"question": "What is diversification and why is it important for investing?", "expected": "risk"}
+{"question": "How does the central bank control inflation using interest rates?", "expected": "interest rate"}

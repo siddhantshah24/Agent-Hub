@@ -1,0 +1,59 @@
+## DOCUMENT: Business Banking Basics
+To open a business bank account, you need a state-issued "doing business as" (DBA) certificate from the county clerk's office, as well as an Employer Identification Number (EIN) issued by the IRS. Once the account is open, associates can sign the back of cheques (endorse them) and deposit them into the business account. Most banks require the endorsement to match the payee name on the cheque.
+
+## DOCUMENT: Depositing Cheques
+To deposit a cheque issued to an associate into a business account, the associate must endorse the cheque on the back. This means signing their name and writing "For Deposit Only" along with the business account number. Without a proper endorsement, the bank will typically refuse to process the deposit. Digital cheque deposits via mobile apps also require this endorsement.
+
+## DOCUMENT: Inflation Causes
+Inflation is primarily caused by an increase in the money supply relative to the goods and services available in the economy. When the central bank prints more money or lowers interest rates significantly, more money chases the same amount of goods, driving prices up. Other causes include demand-pull inflation (high consumer demand), cost-push inflation (rising production costs like wages or oil), and built-in inflation from wage-price spirals.
+
+## DOCUMENT: Controlling Inflation
+Central banks use monetary policy tools to control inflation. Raising the federal funds rate (interest rates) reduces borrowing and slows spending, which reduces inflationary pressure. Quantitative tightening (reducing the money supply) also helps. Governments can use fiscal policy such as reducing spending or increasing taxes to cool an overheating economy.
+
+## DOCUMENT: Credit Scores
+A credit score is a numerical representation (typically 300–850) of your creditworthiness, based on payment history, amounts owed, length of credit history, new credit, and credit mix. A score above 700 is generally considered good. Having bad credit means higher interest rates on loans. To improve a bad credit score, pay bills on time, reduce credit card balances, and avoid opening many new accounts at once.
+
+## DOCUMENT: Credit and Cash Flow
+Having good cash flow but bad credit is a common situation for small businesses or individuals who have had past financial difficulties. Lenders look at both cash flow and credit history when making decisions. Even with strong cash flow, bad credit can result in loan denials or high-interest offers. Options include secured loans, credit unions, or working with a credit repair service.
+
+## DOCUMENT: Employee Stock Options
+Employee stock options (ESOs) give employees the right to purchase company stock at a predetermined price (strike price) within a specific time window. They are a common form of compensation at startups. Options vest over a period (often 4 years with a 1-year cliff). When exercised, the employee buys shares at the strike price regardless of current market value, which can create significant profit if the stock has appreciated.
+
+## DOCUMENT: Hiring Employees and EIN
+If you are a sole proprietor or partnership and begin hiring employees, you may need to obtain a new Employer Identification Number (EIN) from the IRS. Existing sole proprietors who already have an EIN do not always need a new one, but if the business structure changes (e.g., incorporating), a new EIN is typically required. The IRS website provides guidance and free EIN registration.
+
+## DOCUMENT: Investment Diversification
+Diversification is an investment strategy that spreads capital across different asset classes, sectors, and geographies to reduce risk. The core principle is that not all assets move in the same direction at the same time. A diversified portfolio might include stocks, bonds, real estate investment trusts (REITs), commodities, and international equities. Diversification does not guarantee profit but reduces the impact of any single investment's poor performance.
+
+## DOCUMENT: Retirement Accounts - 401k vs IRA
+A 401(k) is an employer-sponsored retirement savings plan that allows pre-tax contributions up to $23,000 per year (2024). Many employers offer matching contributions. An IRA (Individual Retirement Account) allows individuals to save up to $7,000 per year (2024) with tax advantages. A Roth IRA uses after-tax money but grows tax-free. A traditional IRA uses pre-tax contributions and taxes are paid upon withdrawal. Both accounts have early withdrawal penalties before age 59.5.
+
+## DOCUMENT: Short Selling
+Short selling is a trading strategy where an investor borrows shares and sells them, hoping to repurchase them later at a lower price and return them to the lender, pocketing the difference. It is a way to profit from declining stock prices. The risk is theoretically unlimited because prices can rise indefinitely. Short sellers must also pay dividends to the lender if any are issued during the borrowing period.
+
+## DOCUMENT: Credit Card Interest Calculations
+Credit card interest is calculated using the Annual Percentage Rate (APR). Most cards use a daily periodic rate (APR divided by 365) applied to your average daily balance. If you carry a balance, you are charged interest every day. Paying the full statement balance each month avoids interest entirely. Minimum payments mostly cover interest, making it slow and expensive to pay off high balances.
+
+## DOCUMENT: Tax Loss Harvesting
+Tax loss harvesting is a strategy where investors sell securities at a loss to offset capital gains taxes on profitable investments. The losses reduce your taxable capital gains, potentially lowering your tax bill. You can then reinvest in a similar (but not identical) security to maintain portfolio exposure. The IRS wash-sale rule disallows the deduction if you buy the same or substantially identical security within 30 days before or after the sale.
+
+## DOCUMENT: Buying a House - Mortgage Basics
+A mortgage is a loan used to purchase real estate where the property serves as collateral. Common mortgage types include fixed-rate (interest stays the same for the loan term) and adjustable-rate (ARM, interest changes after an initial period). Down payments are typically 3–20% of the home price. A higher down payment reduces the monthly payment and may eliminate the need for Private Mortgage Insurance (PMI). Credit score, debt-to-income ratio, and employment history affect mortgage approval.
+
+## DOCUMENT: Emergency Fund
+An emergency fund is a savings buffer designed to cover 3–6 months of essential living expenses in case of unexpected financial hardship such as job loss, medical emergencies, or major home repairs. It should be kept in a high-yield savings account for easy access and some interest growth. Financial advisors recommend building this fund before investing aggressively in the stock market.
+
+## DOCUMENT: Privacy and Credit Data
+Credit bureaus (Equifax, Experian, TransUnion) collect and maintain financial data including loan history, payment records, and public records like bankruptcies. This data is shared with creditors and lenders. Under the Fair Credit Reporting Act (FCRA), consumers have the right to access their credit reports for free once a year, dispute inaccuracies, and opt out of pre-screened credit offers.
+
+## DOCUMENT: Cheque Fraud Prevention
+Banks and businesses use several methods to prevent cheque fraud: positive pay systems (verifying cheque details before clearing), using security cheques with watermarks, requiring dual signatures for large amounts, and monitoring accounts for unusual activity. MICR (Magnetic Ink Character Recognition) lines at the bottom of cheques are used by banks to process them automatically.
+
+## DOCUMENT: Compound Interest
+Compound interest is interest calculated on both the initial principal and the accumulated interest from previous periods. Unlike simple interest, it grows exponentially over time. The formula is A = P(1 + r/n)^(nt) where P is principal, r is annual rate, n is compounding frequency, and t is time in years. Daily compounding yields more than monthly or annual compounding. This is why starting to invest early makes a dramatic difference over decades.
+
+## DOCUMENT: Currency Exchange Risk
+Foreign exchange (Forex) risk arises when a transaction is denominated in a foreign currency. If you hold investments or conduct business in another currency, fluctuations in exchange rates can affect returns. For example, if a US investor holds European stocks and the euro weakens against the dollar, returns are reduced even if the underlying stocks performed well. Hedging with currency futures or options can mitigate this risk.
+
+## DOCUMENT: Bankruptcy Types
+In the US, Chapter 7 bankruptcy liquidates non-exempt assets to pay creditors and discharges remaining eligible debt. Chapter 13 allows individuals to restructure debts into a 3–5 year repayment plan while keeping assets. Chapter 11 is primarily used by businesses to reorganize and continue operating. Bankruptcy negatively affects credit for 7–10 years but provides a legal fresh start for individuals overwhelmed by debt.
