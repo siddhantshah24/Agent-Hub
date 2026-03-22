@@ -1,14 +1,19 @@
 import Link from "next/link";
 
-const PAGE_BG = "#1a1628";
-const BORDER = "#2a2444";
-const RULE = "rgba(255,255,255,0.08)";
-const CODE_BG = "#0c0a12";
-const TITLE = "#f8fafc";
-const TEXT = "#e2e8f0";
-const MUTED = "#9ca3c9";
-const LINK = "#c4b5fd";
-const CODE_FG = "#86efac";
+/** Full-page peach / cream documentation theme (matches AppShell on /docs). */
+const THEME = {
+  pageBg: "#faf6f1",
+  pageBgElev: "#fffbf7",
+  border: "#e8ddd4",
+  text: "#44403c",
+  mutedQuiet: "#78716c",
+  codeBg: "#f3ebe4",
+  codeFg: "#1c1917",
+  codeBorder: "#d6cbc1",
+  tableHeadBg: "#f5ebe4",
+  inlineCodeBg: "rgba(243, 235, 228, 0.95)",
+  stepBadgeBg: "rgba(234, 88, 12, 0.1)",
+} as const;
 
 type DocsSection = {
   title: string;
@@ -129,11 +134,12 @@ function slugify(title: string) {
 function CodeBlock({ children }: { children: string }) {
   return (
     <pre
-      className="my-0 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-[12.5px] leading-relaxed sm:text-[13px]"
+      className="my-0 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-[12.5px] leading-relaxed shadow-sm sm:text-[13px]"
       style={{
-        background: CODE_BG,
-        borderColor: BORDER,
-        color: CODE_FG,
+        background: THEME.codeBg,
+        borderColor: THEME.codeBorder,
+        color: THEME.codeFg,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)",
       }}
     >
       <code>{children}</code>
@@ -146,30 +152,32 @@ export default function DocsPage() {
 
   return (
     <div
-      className="relative min-w-0 w-full pb-24 pt-4"
-      style={{ background: PAGE_BG, color: TEXT }}
+      className="relative -mx-6 min-w-0 w-[calc(100%+3rem)] max-w-none px-6 pb-24 pt-2 sm:w-[calc(100%+3rem)]"
+      style={{
+        background: `linear-gradient(180deg, ${THEME.pageBgElev} 0%, ${THEME.pageBg} 32%, ${THEME.pageBg} 100%)`,
+        color: THEME.text,
+        minHeight: "calc(100vh - 8rem)",
+      }}
     >
-      <div className="mx-auto flex max-w-6xl min-w-0 gap-10 px-4 lg:gap-14 lg:px-8">
-        {/* ── TOC (docs sidebar) ─────────────────────────────────────────── */}
-        <aside className="hidden w-52 shrink-0 lg:block">
+      {/* Grid keeps sticky predictable; flex align-items:stretch can confuse sticky in some engines */}
+      <div className="mx-auto grid min-w-0 max-w-6xl grid-cols-1 gap-8 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10 lg:items-start">
+        <aside className="z-10 hidden lg:block">
           <nav
-            className="sticky top-24 space-y-3 border-l pl-4"
-            style={{ borderColor: BORDER }}
+            className="sticky top-24 z-10 max-h-[min(70vh,calc(100vh-7rem))] space-y-3 overflow-y-auto overscroll-contain rounded-xl border border-stone-200/90 bg-white/80 p-4 shadow-sm"
             aria-label="On this page"
           >
             <p
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: MUTED }}
+              className="text-[11px] font-semibold uppercase tracking-wider text-stone-500"
+              style={{ letterSpacing: "0.08em" }}
             >
               On this page
             </p>
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-1.5 text-sm">
               {toc.map((item) => (
                 <li key={item.id}>
                   <a
                     href={`#${item.id}`}
-                    className="block border-l-2 border-transparent py-0.5 pl-3 -ml-[17px] text-[13px] leading-snug transition-colors hover:border-violet-500/50 hover:text-slate-200"
-                    style={{ color: MUTED }}
+                    className="block rounded-md border-l-2 border-transparent py-1.5 pl-3 -ml-px text-[13px] leading-snug text-stone-600 transition-colors hover:border-violet-500/50 hover:bg-violet-500/[0.08] hover:text-violet-900"
                   >
                     {item.title}
                   </a>
@@ -179,48 +187,47 @@ export default function DocsPage() {
           </nav>
         </aside>
 
-        {/* ── Main article ───────────────────────────────────────────────── */}
-        <article
-          className="min-w-0 max-w-[42rem] flex-1 pb-8"
-          style={{ fontSize: "15px", lineHeight: 1.7 }}
-        >
+        <article className="min-w-0 pb-4" style={{ fontSize: "15px", lineHeight: 1.7 }}>
           <nav
-            className="mb-6 flex flex-wrap items-center gap-1.5 text-xs font-medium"
-            style={{ color: MUTED }}
+            className="mb-6 flex flex-wrap items-center gap-1.5 text-xs font-medium text-stone-500"
             aria-label="Breadcrumb"
           >
-            <Link href="/" className="transition-colors hover:underline" style={{ color: LINK }}>
+            <Link
+              href="/"
+              className="font-medium text-violet-800 transition-colors hover:text-violet-950 hover:underline"
+            >
               Home
             </Link>
-            <span aria-hidden className="opacity-50">
+            <span aria-hidden className="text-stone-400">
               /
             </span>
-            <span style={{ color: TEXT }}>Documentation</span>
+            <span className="text-stone-700">Documentation</span>
           </nav>
 
           <h1
-            className="text-3xl font-bold tracking-tight sm:text-[2rem] sm:leading-tight"
-            style={{ color: TITLE }}
+            className="text-3xl font-bold tracking-tight text-stone-900 sm:text-[2rem] sm:leading-tight"
           >
             Documentation
           </h1>
-          <p className="lead mt-4 text-base sm:text-[1.0625rem]" style={{ color: MUTED }}>
+          <p className="lead mt-4 max-w-2xl text-base text-stone-600 sm:text-[1.0625rem] sm:leading-relaxed">
             Reference and onboarding for running golden evals, versioning agent code, and inspecting
             runs locally. Use the table of contents on wide screens to jump to a section.
           </p>
 
           <nav
-            className="mt-8 rounded-lg border p-4 lg:hidden"
-            style={{ borderColor: BORDER, background: "rgba(0,0,0,0.2)" }}
+            className="mt-8 rounded-xl border border-stone-200/90 bg-white/50 p-4 shadow-sm backdrop-blur-sm lg:hidden"
             aria-label="On this page"
           >
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               On this page
             </p>
-            <ul className="flex flex-col gap-1.5 text-sm" style={{ color: LINK }}>
+            <ul className="flex flex-col gap-1.5 text-sm text-violet-900">
               {toc.map((item) => (
                 <li key={item.id}>
-                  <a href={`#${item.id}`} className="underline-offset-2 hover:underline">
+                  <a
+                    href={`#${item.id}`}
+                    className="underline-offset-2 transition-colors hover:text-violet-950 hover:underline"
+                  >
                     {item.title}
                   </a>
                 </li>
@@ -229,8 +236,7 @@ export default function DocsPage() {
           </nav>
 
           <div
-            className="my-10 h-px w-full"
-            style={{ background: RULE }}
+            className="my-10 h-px w-full bg-stone-200"
             aria-hidden
           />
 
@@ -240,18 +246,22 @@ export default function DocsPage() {
             const rows = s.rows ?? [];
             return (
               <section key={s.title} id={id} className="scroll-mt-28">
-                <h2
-                  className="text-xl font-semibold tracking-tight sm:text-[1.35rem]"
-                  style={{ color: TITLE }}
-                >
+                <h2 className="text-xl font-semibold tracking-tight text-stone-900 sm:text-[1.35rem]">
                   {s.title}
                 </h2>
 
                 {s.steps && (
                   <div className="mt-6 space-y-8">
-                    <p style={{ color: MUTED }}>
-                      Run these from your <strong style={{ color: TEXT }}>agent project root</strong>{" "}
-                      (where <code className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[13px]" style={{ color: LINK }}>agent-eval.yml</code> lives).
+                    <p className="text-stone-600">
+                      Run these from your <strong className="font-medium text-stone-800">agent project root</strong>{" "}
+                      (where{" "}
+                      <code
+                        className="rounded border border-stone-300 px-1.5 py-0.5 font-mono text-[13px] text-amber-900"
+                        style={{ background: THEME.inlineCodeBg }}
+                      >
+                        agent-eval.yml
+                      </code>{" "}
+                      lives).
                     </p>
                     <dl className="space-y-6">
                       {s.steps.map((step) => (
@@ -259,7 +269,7 @@ export default function DocsPage() {
                           <dt className="mb-2">
                             <CodeBlock>{step.cmd}</CodeBlock>
                           </dt>
-                          <dd className="pl-0.5" style={{ color: TEXT }}>
+                          <dd className="pl-0.5 text-stone-700">
                             {step.desc}
                           </dd>
                         </div>
@@ -274,24 +284,17 @@ export default function DocsPage() {
                       <li key={item.title} className="relative pl-0">
                         <div className="flex gap-4">
                           <span
-                            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded font-mono text-xs font-semibold tabular-nums"
-                            style={{
-                              background: "rgba(124,58,237,0.15)",
-                              color: LINK,
-                              border: `1px solid ${BORDER}`,
-                            }}
+                            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded border border-amber-800/20 font-mono text-xs font-semibold tabular-nums text-amber-900"
+                            style={{ background: THEME.stepBadgeBg }}
                             aria-hidden
                           >
                             {idx + 1}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <h3
-                              className="text-base font-semibold tracking-tight"
-                              style={{ color: TITLE }}
-                            >
+                            <h3 className="text-base font-semibold tracking-tight text-stone-900">
                               {item.title}
                             </h3>
-                            <p className="mt-2" style={{ color: TEXT }}>
+                            <p className="mt-2 text-stone-700">
                               {item.description}
                             </p>
                           </div>
@@ -302,40 +305,40 @@ export default function DocsPage() {
                 )}
 
                 {rows.length > 0 && (
-                  <div className="mt-6 overflow-x-auto rounded-lg border" style={{ borderColor: BORDER }}>
+                  <div
+                    className="mt-6 overflow-x-auto rounded-lg border border-stone-200 bg-white/80 shadow-sm"
+                    style={{ boxShadow: "0 1px 2px rgba(28,25,23,0.04)" }}
+                  >
                     <table className="w-full min-w-[32rem] border-collapse text-left text-[14px]">
                       <thead>
-                        <tr style={{ borderBottom: `1px solid ${BORDER}`, background: "rgba(0,0,0,0.25)" }}>
+                        <tr
+                          className="border-b border-stone-200"
+                          style={{ background: THEME.tableHeadBg }}
+                        >
                           <th
                             scope="col"
-                            className="px-4 py-3 font-semibold"
-                            style={{ color: TITLE, width: "38%" }}
+                            className="px-4 py-3 text-[13px] font-semibold text-stone-800"
+                            style={{ width: "38%" }}
                           >
                             {id.includes("api") ? "Endpoint" : id.includes("routes") ? "Route" : "Field"}
                           </th>
-                          <th scope="col" className="px-4 py-3 font-semibold" style={{ color: TITLE }}>
+                          <th scope="col" className="px-4 py-3 text-[13px] font-semibold text-stone-800">
                             Description
                           </th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="bg-white/90">
                         {rows.map(([key, val], i) => (
                           <tr
                             key={key}
-                            style={{
-                              borderBottom:
-                                i < rows.length - 1 ? `1px solid ${BORDER}` : undefined,
-                            }}
+                            className={
+                              i < rows.length - 1 ? "border-b border-stone-100" : ""
+                            }
                           >
-                            <td
-                              className="align-top px-4 py-3 font-mono text-[12px] leading-snug sm:text-[13px]"
-                              style={{ color: LINK }}
-                            >
+                            <td className="align-top px-4 py-3 font-mono text-[12px] leading-snug text-violet-900 sm:text-[13px]">
                               {key}
                             </td>
-                            <td className="align-top px-4 py-3" style={{ color: TEXT }}>
-                              {val}
-                            </td>
+                            <td className="align-top px-4 py-3 text-stone-700">{val}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -344,27 +347,25 @@ export default function DocsPage() {
                 )}
 
                 {!isLast && (
-                  <div className="my-14 h-px w-full" style={{ background: RULE }} aria-hidden />
+                  <div className="my-14 h-px w-full bg-stone-200" aria-hidden />
                 )}
               </section>
             );
           })}
 
-          <footer className="-mt-8 flex flex-wrap items-center gap-3 border-t pt-10" style={{ borderColor: RULE }}>
+          <footer className="-mt-8 flex flex-wrap items-center gap-3 border-t border-stone-200 pt-10">
             <Link
               href="/dashboard"
-              className="text-sm font-medium underline-offset-4 transition-colors hover:underline"
-              style={{ color: LINK }}
+              className="text-sm font-medium text-violet-800 underline-offset-4 transition-colors hover:text-violet-950 hover:underline"
             >
               Open dashboard →
             </Link>
-            <span style={{ color: MUTED }}>·</span>
+            <span className="text-stone-400">·</span>
             <a
               href="https://github.com/siddhantshah24/Agent-Hub"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm font-medium underline-offset-4 transition-colors hover:underline"
-              style={{ color: MUTED }}
+              className="text-sm font-medium text-stone-500 underline-offset-4 transition-colors hover:text-stone-800 hover:underline"
             >
               GitHub
             </a>

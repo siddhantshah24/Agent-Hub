@@ -131,6 +131,12 @@
     overflow-x: hidden;
     max-width: 100%;
   }
+
+  /* Let /docs TOC use position:sticky (overflow:hidden on root breaks it) */
+  html.docs-peach-theme,
+  html.docs-peach-theme body {
+    overflow-x: visible !important;
+  }
 }
 
 /* ── Cards ──────────────────────────────────────────────────────────────────── */
