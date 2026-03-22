@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ChevronDown, Code2, Database, X } from "lucide-react";
 import { fetchAgentSnapshot } from "@/lib/fetch-agent-snapshot";
+import type { AgentSnapshotData } from "@/components/agent-lab/agent-snapshot-view";
 
 /**
  * Always use same-origin `/api/*` in the browser. Next.js rewrites those to FastAPI
@@ -78,13 +79,8 @@ export interface Project {
   latest_success_rate: number | null;
 }
 
-export interface Snapshot {
-  available: boolean;
-  tag: string;
-  filename: string;
-  content: string;
-  reason?: string;
-}
+/** Same shape as GET /api/snapshot/{tag} (alias for modal + any legacy imports). */
+export type Snapshot = AgentSnapshotData;
 
 export const DASHBOARD_PAGE_STYLE: CSSProperties = {
   background: "#1c1729",
@@ -177,7 +173,7 @@ export function ProjectSelector({
 }
 
 export function SnapshotModal({ tag, project, onClose }: { tag: string; project: string; onClose: () => void }) {
-  const [snap, setSnap] = useState<Snapshot | null>(null);
+  const [snap, setSnap] = useState<AgentSnapshotData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
