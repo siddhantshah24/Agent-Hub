@@ -18,8 +18,27 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+# ---------------------------------------------------------------------------
+# Migrations — applied in order, each guarded against already-existing columns
+# ---------------------------------------------------------------------------
+
+_MIGRATIONS = [
+    # content_hash (from previous pull)
+    "ALTER TABLE runs ADD COLUMN content_hash TEXT",
+    # versioning improvements
+    "ALTER TABLE runs ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE runs ADD COLUMN total_input_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE runs ADD COLUMN total_output_tokens INTEGER NOT NULL DEFAULT 0",
+    # per-sample enrichment
+    "ALTER TABLE run_samples ADD COLUMN langfuse_trace_id TEXT DEFAULT NULL",
+    "ALTER TABLE run_samples ADD COLUMN total_llm_calls INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE run_samples ADD COLUMN total_tool_calls INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE run_samples ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
+]
+
+
 def init_db(db_path: Path) -> None:
-    """Create tables if they don't exist, and migrate existing schemas."""
+    """Create tables if they don't exist, and run all pending migrations."""
     with _connect(db_path) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS runs (
@@ -45,10 +64,12 @@ def init_db(db_path: Path) -> None:
                 latency_ms  REAL    NOT NULL
             );
         """)
-        # Migrate older DBs that predate content_hash
-        existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
-        if "content_hash" not in existing:
-            conn.execute("ALTER TABLE runs ADD COLUMN content_hash TEXT")
+        # Apply migrations — skip if column already exists
+        for stmt in _MIGRATIONS:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def insert_run(
@@ -60,6 +81,9 @@ def insert_run(
     total_cases: int,
     snapshot_path: Optional[str] = None,
     content_hash: Optional[str] = None,
+    notes: str = "",
+    total_input_tokens: int = 0,
+    total_output_tokens: int = 0,
 ) -> int:
     """Insert an aggregated run record. Returns the new run id."""
     ts = datetime.utcnow().isoformat()
@@ -68,13 +92,25 @@ def insert_run(
             """
             INSERT OR REPLACE INTO runs
                 (version_tag, success_rate, avg_latency_ms, avg_cost_usd,
-                 total_cases, snapshot_path, content_hash, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 total_cases, snapshot_path, content_hash,
+                 notes, total_input_tokens, total_output_tokens, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (version_tag, success_rate, avg_latency_ms, avg_cost_usd,
-             total_cases, snapshot_path, content_hash, ts),
+             total_cases, snapshot_path, content_hash,
+             notes, total_input_tokens, total_output_tokens, ts),
         )
-        return cur.lastrowid
+        return cur.lastrowid or 0
+
+
+def update_run_notes(db_path: Path, version_tag: str, notes: str) -> bool:
+    """Update the notes for an existing run. Returns True if a row was updated."""
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE runs SET notes = ? WHERE version_tag = ?",
+            (notes, version_tag),
+        )
+        return cur.rowcount > 0
 
 
 def tag_exists(db_path: Path, version_tag: str) -> bool:
@@ -108,6 +144,10 @@ def insert_samples(db_path: Path, run_id: int, samples: list[dict]) -> None:
             s["got"],
             int(s["passed"]),
             s["latency_ms"],
+            s.get("langfuse_trace_id"),
+            s.get("total_llm_calls", 0),
+            s.get("total_tool_calls", 0),
+            s.get("cost_usd", 0.0),
         )
         for s in samples
     ]
@@ -115,8 +155,9 @@ def insert_samples(db_path: Path, run_id: int, samples: list[dict]) -> None:
         conn.executemany(
             """
             INSERT INTO run_samples
-                (run_id, sample_idx, input, expected, got, passed, latency_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (run_id, sample_idx, input, expected, got, passed, latency_ms,
+                 langfuse_trace_id, total_llm_calls, total_tool_calls, cost_usd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

@@ -1,8 +1,11 @@
 agent:
-  # Strict-compliance math agent using langchain-benchmarks Multiverse Math env
+  # Python import path to your agent's callable: "module.submodule:function"
   entrypoint: "src.graph:run_agent"
 
 dataset:
-  path: "datasets/math_evals.jsonl"
+  # Path to your JSONL evaluation dataset (relative to this file)
+  path: "datasets/evals.jsonl"
+  # Key in each JSONL row that holds the agent input
   input_key: "question"
+  # Key in each JSONL row that holds the expected output
   expected_output_key: "answer"

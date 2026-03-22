@@ -26,7 +26,7 @@ from rich.table import Table
 
 from langchain_core.callbacks.base import BaseCallbackHandler
 
-from .db import init_db, insert_run, insert_samples, tag_exists, get_run_count
+from .db import init_db, insert_run, insert_samples, tag_exists, get_run_count, update_run_notes, get_all_runs
 from .parser import EvalConfig
 
 console = Console()
@@ -38,10 +38,18 @@ class _TokenCostTracker(BaseCallbackHandler):
     Works without any Langfuse API calls — runs fully locally.
     """
     _COSTS = {
-        "gpt-4o-mini":   (0.150 / 1_000_000, 0.600 / 1_000_000),
-        "gpt-4o":        (2.50  / 1_000_000, 10.0  / 1_000_000),
-        "gpt-4-turbo":   (10.0  / 1_000_000, 30.0  / 1_000_000),
-        "gpt-3.5-turbo": (0.50  / 1_000_000,  1.50 / 1_000_000),
+        # OpenAI
+        "gpt-4o-mini":              (0.150 / 1_000_000, 0.600 / 1_000_000),
+        "gpt-4o":                   (2.50  / 1_000_000, 10.0  / 1_000_000),
+        "gpt-4-turbo":              (10.0  / 1_000_000, 30.0  / 1_000_000),
+        "gpt-3.5-turbo":            (0.50  / 1_000_000,  1.50 / 1_000_000),
+        # Groq
+        "llama-3.3-70b-versatile":  (0.59  / 1_000_000, 0.79  / 1_000_000),
+        "llama-3.1-8b-instant":     (0.05  / 1_000_000, 0.08  / 1_000_000),
+        "llama3-70b-8192":          (0.59  / 1_000_000, 0.79  / 1_000_000),
+        "llama3-8b-8192":           (0.05  / 1_000_000, 0.08  / 1_000_000),
+        "mixtral-8x7b-32768":       (0.24  / 1_000_000, 0.24  / 1_000_000),
+        "gemma2-9b-it":             (0.20  / 1_000_000, 0.20  / 1_000_000),
     }
     _DEFAULT_COST = (0.150 / 1_000_000, 0.600 / 1_000_000)
 
@@ -50,6 +58,20 @@ class _TokenCostTracker(BaseCallbackHandler):
         self.total_cost_usd = 0.0
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        # Per-sample counters — reset via reset_sample() between samples
+        self.sample_cost_usd = 0.0
+        self.sample_prompt_tokens = 0
+        self.sample_completion_tokens = 0
+        self.sample_llm_calls = 0
+        self.sample_tool_calls = 0
+
+    def reset_sample(self) -> None:
+        """Reset per-sample counters before each new sample invocation."""
+        self.sample_cost_usd = 0.0
+        self.sample_prompt_tokens = 0
+        self.sample_completion_tokens = 0
+        self.sample_llm_calls = 0
+        self.sample_tool_calls = 0
 
     def on_llm_end(self, response, **kwargs) -> None:
         try:
@@ -71,11 +93,21 @@ class _TokenCostTracker(BaseCallbackHandler):
                 if key in model.lower():
                     in_cost, out_cost = prices
                     break
-            self.total_prompt_tokens += prompt_tok
+            call_cost = prompt_tok * in_cost + comp_tok * out_cost
+            # Global totals
+            self.total_prompt_tokens     += prompt_tok
             self.total_completion_tokens += comp_tok
-            self.total_cost_usd += prompt_tok * in_cost + comp_tok * out_cost
+            self.total_cost_usd          += call_cost
+            # Per-sample totals
+            self.sample_prompt_tokens     += prompt_tok
+            self.sample_completion_tokens += comp_tok
+            self.sample_cost_usd          += call_cost
+            self.sample_llm_calls         += 1
         except Exception:
             pass
+
+    def on_tool_end(self, output, **kwargs) -> None:
+        self.sample_tool_calls += 1
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +177,7 @@ def _extract_from_ast(source_path: Path) -> dict:
                 func_name = node.func.id
             elif isinstance(node.func, ast.Attribute):
                 func_name = node.func.attr
-            if any(x in func_name for x in ("ChatOpenAI", "ChatAnthropic", "AzureChatOpenAI")):
+            if any(x in func_name for x in ("ChatOpenAI", "ChatAnthropic", "AzureChatOpenAI", "ChatGroq")):
                 if not model_config:  # take first occurrence
                     model_config["class"] = func_name
                     for kw in node.keywords:
@@ -441,6 +473,46 @@ def _load_jsonl(path: Path) -> list[dict]:
 # Main run function
 # ---------------------------------------------------------------------------
 
+def _auto_generate_notes(db_path: Path, tag: str, project_root: Path) -> str:
+    """
+    Auto-generate a short plain-English note from the snapshot diff vs the
+    previous run. Falls back to '' if no previous run or diff is empty.
+    """
+    try:
+        all_runs = get_all_runs(db_path)
+        if len(all_runs) < 2:
+            return ""
+        prev_run = all_runs[-2]  # second-to-last (current run is already inserted)
+        prev_snap = prev_run.get("snapshot_path")
+        curr_snap = str(project_root / ".agentlab" / "snapshots" / tag)
+        if not prev_snap or not Path(prev_snap).exists():
+            return ""
+        # Find graph.py in both snapshots
+        def _read(snap_path: str) -> str:
+            p = Path(snap_path)
+            if p.suffix == ".py":
+                return p.read_text() if p.exists() else ""
+            for name in ["graph.py", "agent.py"]:
+                f = p / name
+                if f.exists():
+                    return f.read_text()
+            return ""
+        prev_code = _read(prev_snap)
+        curr_code = _read(curr_snap)
+        if not prev_code or not curr_code or prev_code == curr_code:
+            return "No code changes vs previous run"
+        import difflib
+        diff = list(difflib.unified_diff(
+            prev_code.splitlines(), curr_code.splitlines(),
+            lineterm="", n=0
+        ))
+        added   = sum(1 for l in diff if l.startswith("+") and not l.startswith("++"))
+        removed = sum(1 for l in diff if l.startswith("-") and not l.startswith("--"))
+        return f"{added} line(s) added, {removed} line(s) removed vs {prev_run['version_tag']}"
+    except Exception:
+        return ""
+
+
 def run_evaluation(
     config: EvalConfig,
     tag: Optional[str],
@@ -451,6 +523,7 @@ def run_evaluation(
     langfuse_host: str = "http://localhost:3000",
     force: bool = False,
     limit: Optional[int] = None,
+    notes: str = "",
 ) -> dict:
     """
     Execute a full evaluation run.
@@ -543,6 +616,9 @@ def run_evaluation(
             question = row[config.input_key]
             expected = str(row[config.expected_output_key])
 
+            # Reset per-sample counters before each invocation
+            cost_tracker.reset_sample()
+
             callbacks = [cost_tracker]
             if langfuse_handler:
                 callbacks.append(langfuse_handler)
@@ -574,6 +650,19 @@ def run_evaluation(
             passed = _answers_match(got, expected)
             latencies.append(elapsed_ms)
 
+            # Capture Langfuse trace ID for direct lookup (avoids name-scan later)
+            trace_id: Optional[str] = None
+            if langfuse_handler:
+                try:
+                    trace_id = getattr(langfuse_handler, "trace_id", None)
+                    if trace_id is None:
+                        # Newer Langfuse SDK exposes it via get_trace_id()
+                        get_tid = getattr(langfuse_handler, "get_trace_id", None)
+                        if callable(get_tid):
+                            trace_id = get_tid()
+                except Exception:
+                    pass
+
             samples.append({
                 "sample_idx": idx,
                 "input": question,
@@ -581,6 +670,10 @@ def run_evaluation(
                 "got": got,
                 "passed": passed,
                 "latency_ms": round(elapsed_ms, 2),
+                "langfuse_trace_id": trace_id,
+                "total_llm_calls": cost_tracker.sample_llm_calls,
+                "total_tool_calls": cost_tracker.sample_tool_calls,
+                "cost_usd": round(cost_tracker.sample_cost_usd, 8),
             })
 
             status = "[green]✓[/]" if passed else "[red]✗[/]"
@@ -611,6 +704,11 @@ def run_evaluation(
         f"total cost: ${total_cost:.4f}[/dim]"
     )
 
+    # --- Notes: auto-generate if not provided ---------------------------
+    final_notes = notes
+    if not final_notes:
+        final_notes = _auto_generate_notes(db_path, tag, project_root)
+
     # --- Save to SQLite -------------------------------------------------
     run_id = insert_run(
         db_path=db_path,
@@ -621,6 +719,9 @@ def run_evaluation(
         total_cases=total,
         snapshot_path=snapshot_path,
         content_hash=content_hash,
+        notes=final_notes,
+        total_input_tokens=cost_tracker.total_prompt_tokens,
+        total_output_tokens=cost_tracker.total_completion_tokens,
     )
     insert_samples(db_path, run_id, samples)
 
@@ -637,6 +738,9 @@ def run_evaluation(
     table.add_row("Content Hash", content_hash)
     console.print(table)
 
+    if final_notes:
+        console.print(f"[dim]Notes: {final_notes}[/dim]")
+
     return {
         "tag": tag,
         "success_rate": success_rate,
@@ -645,4 +749,5 @@ def run_evaluation(
         "total_cases": total,
         "passed": passed_count,
         "content_hash": content_hash,
+        "notes": final_notes,
     }

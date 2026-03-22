@@ -1,6 +1,33 @@
-.venv
 .env
-.env
-.env
+.env.*
+.venv/
+venv/
+
+# Python caches/build
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+*.egg-info/
+
+# Node / frontend build artifacts
+node_modules/
+.next/
+dist/
+build/
+
+# OS/editor noise
 .DS_Store
-__pycache__
+.idea/
+.vscode/
+
+# Agent Lab runtime artifacts (local only)
+**/.agentlab.db
+**/.agentlab.db-shm
+**/.agentlab.db-wal
+**/.agentlab/snapshots/

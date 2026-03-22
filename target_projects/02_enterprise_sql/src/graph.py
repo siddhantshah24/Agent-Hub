@@ -26,7 +26,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langgraph.prebuilt import create_react_agent
 
 try:
@@ -150,10 +150,10 @@ def run_agent(input: dict, config: dict | None = None) -> dict:
         → query_db("SELECT l.city FROM users u JOIN locations l ON u.location_id = l.id WHERE u.name = 'Charlie'")
         → "Chicago"
     """
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
         temperature=0,
-        api_key=os.environ.get("OPENAI_API_KEY"),
+        api_key=os.environ.get("GROQ_API_KEY"),
     )
 
     agent = create_react_agent(llm, SQL_TOOLS, prompt=SYSTEM_PROMPT)

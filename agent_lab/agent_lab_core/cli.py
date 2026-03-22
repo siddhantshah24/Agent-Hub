@@ -102,6 +102,10 @@ def eval(
         None, "--limit", "-n",
         help="Only run the first N samples. Useful for quick smoke tests.",
     ),
+    notes: str = typer.Option(
+        "", "--notes", "-m",
+        help="Human-readable description of what changed in this version.",
+    ),
 ):
     """Run evaluation against the golden dataset and record metrics."""
     from .parser import parse_config
@@ -128,6 +132,7 @@ def eval(
             langfuse_host=env["LANGFUSE_HOST"],
             force=force,
             limit=limit,
+            notes=notes,
         )
     except ValueError as e:
         console.print(f"[red bold]Error:[/] {e}")

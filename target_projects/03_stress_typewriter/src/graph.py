@@ -23,7 +23,7 @@ from typing import Callable
 
 from dotenv import load_dotenv
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langgraph.prebuilt import create_react_agent
 
 load_dotenv()
@@ -103,10 +103,10 @@ def run_agent(input: dict, config: dict | None = None) -> dict:
     paper = _Paper()
     tools = _make_letter_tools(paper)
 
-    llm = ChatOpenAI(
-        model="gpt-4o",
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
         temperature=0,
-        api_key=os.environ.get("OPENAI_API_KEY"),
+        api_key=os.environ.get("GROQ_API_KEY"),
     )
 
     agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)

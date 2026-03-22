@@ -30,6 +30,7 @@ const MONO = "var(--font-mono), 'JetBrains Mono', monospace";
 interface RunInfo {
   version_tag: string; success_rate: number;
   avg_latency_ms: number; avg_cost_usd: number; total_cases: number; timestamp: string;
+  notes?: string;
 }
 interface DiffData {
   v1: RunInfo; v2: RunInfo;
@@ -817,6 +818,22 @@ function DiffContent() {
           </span>
         )}
       </div>
+
+      {/* Notes row — shown if either run has notes */}
+      {(diff.v1.notes || diff.v2.notes) && (
+        <div className="grid grid-cols-2 gap-4">
+          {[{ tag: v1, notes: diff.v1.notes }, { tag: v2, notes: diff.v2.notes }].map(({ tag, notes }) => (
+            <div key={tag}
+              className="flex items-start gap-2 rounded-lg px-3 py-2"
+              style={{ background: SURF, border: `1px solid ${BORDER}` }}>
+              <span className="text-[10px] font-bold uppercase tracking-widest shrink-0 mt-0.5" style={{ color: MUTED }}>Notes</span>
+              <span className="text-xs leading-relaxed" style={{ color: notes ? TEXT + "CC" : MUTED, fontStyle: notes ? "normal" : "italic" }}>
+                {notes || "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* AI Summary */}
       <div className="rounded-xl p-5"

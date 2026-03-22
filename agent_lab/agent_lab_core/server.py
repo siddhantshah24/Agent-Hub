@@ -18,9 +18,10 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
+from pydantic import BaseModel
+from groq import Groq
 
-from .db import get_all_runs, get_run_by_tag, get_samples_for_tag
+from .db import get_all_runs, get_run_by_tag, get_samples_for_tag, update_run_notes
 
 app = FastAPI(title="Agent Lab API", version="0.1.0")
 
@@ -62,8 +63,8 @@ def _db_for_project(project: Optional[str]) -> Path:
     return all_dbs.get(project, _db_path())
 
 
-def _openai_client() -> OpenAI:
-    return OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+def _groq_client() -> Groq:
+    return Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,22 @@ def get_samples(tag: str, project: Optional[str] = None):
     if not samples:
         raise HTTPException(404, f"No samples found for tag '{tag}'.")
     return samples
+
+
+class NotesUpdate(BaseModel):
+    notes: str
+
+
+@app.patch("/api/runs/{tag}/notes")
+def patch_run_notes(tag: str, body: NotesUpdate, project: Optional[str] = None):
+    """Update the human-readable notes for a run."""
+    db = _db_for_project(project)
+    if not db.exists():
+        raise HTTPException(404, "No database found.")
+    updated = update_run_notes(db, tag, body.notes)
+    if not updated:
+        raise HTTPException(404, f"Version '{tag}' not found.")
+    return {"tag": tag, "notes": body.notes, "updated": True}
 
 
 @app.get("/api/snapshot/{tag}")
@@ -351,7 +368,7 @@ def get_samples_compare(v1: str, v2: str, project: Optional[str] = None):
 
 def _generate_summary(v1, v2, run1, run2, deltas, regressions, improvements) -> str:
     try:
-        client = _openai_client()
+        client = _groq_client()
         reg_lines = "\n".join(
             f"  - Q: {r['input']!r}  expected: {r['expected']!r}  "
             f"{v1}→{r.get(v1+'_got','?')!r}  {v2}→{r.get(v2+'_got','?')!r}"
@@ -380,7 +397,7 @@ Improvements (fail→pass in {v2}):
 Write 2-3 concise sentences analyzing what behaviorally changed. Be specific and actionable."""
 
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.3,
@@ -394,8 +411,7 @@ Write 2-3 concise sentences analyzing what behaviorally changed. Be specific and
 def get_traces_for_tag(tag: str, count: int = 20):
     """
     Fetch full Langfuse trace data for every sample of a version tag.
-    Uses lf.api.trace.get() to retrieve GENERATION + TOOL observations.
-    Returns: system_prompt, ordered tool_calls, llm_steps, latency, cost, Langfuse URL.
+    Returns gracefully if Langfuse is not reachable (does not 500 or hang).
     """
     # Load .env from cwd or parent so Langfuse keys are available when server is called
     from dotenv import load_dotenv
@@ -405,7 +421,7 @@ def get_traces_for_tag(tag: str, count: int = 20):
         from langfuse import get_client
         lf = get_client()
     except Exception as e:
-        return {"error": str(e), "traces": [], "tag": tag}
+        return {"traces": [], "tag": tag, "langfuse_available": False, "error": str(e)}
 
     # Collect trace stubs (name → trace) by paging through the trace list
     trace_map: dict[int, object] = {}
@@ -414,7 +430,8 @@ def get_traces_for_tag(tag: str, count: int = 20):
         try:
             resp = lf.api.trace.list(limit=100, page=page)
         except Exception as e:
-            return {"error": f"trace.list failed: {e}", "traces": [], "tag": tag}
+            # Langfuse is running but trace list failed — still return gracefully
+            return {"traces": [], "tag": tag, "langfuse_available": False, "error": f"trace.list failed: {e}"}
 
         if not getattr(resp, "data", None):
             break

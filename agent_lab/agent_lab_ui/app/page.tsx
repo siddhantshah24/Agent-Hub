@@ -11,7 +11,7 @@ import {
 import {
   Activity, Zap, DollarSign, Layers, GitCompare,
   TrendingUp, TrendingDown, Minus, Shield, ChevronRight,
-  Code2, X, ChevronDown, Database, BarChart2,
+  Code2, X, ChevronDown, Database, BarChart2, Pencil, Check,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -21,6 +21,7 @@ interface Run {
   avg_latency_ms: number; avg_cost_usd: number;
   total_cases: number; snapshot_path: string | null;
   content_hash: string | null; timestamp: string;
+  notes: string;
 }
 interface Project {
   name: string; display_name: string; run_count: number;
@@ -38,7 +39,64 @@ const SURFACE = "#231F3A";
 const BORDER  = "#3D3860";
 const MUTED   = "#9B97BB";
 
-// ── Metric Card ───────────────────────────────────────────────────────────────
+// ── Inline notes editor ──────────────────────────────────────────────────────
+function NotesCell({ tag, initialNotes, project }: { tag: string; initialNotes: string; project: string }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(initialNotes);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (value === initialNotes) { setEditing(false); return; }
+    setSaving(true);
+    const pq = project !== "default" ? `?project=${encodeURIComponent(project)}` : "";
+    await fetch(`${API}/api/runs/${encodeURIComponent(tag)}/notes${pq}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: value }),
+    }).catch(() => {});
+    setSaving(false);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-start gap-1.5" onClick={e => e.stopPropagation()}>
+        <textarea
+          autoFocus
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === "Escape") setEditing(false); }}
+          rows={2}
+          className="flex-1 text-xs rounded-lg px-2 py-1 resize-none outline-none"
+          style={{ background: "#131122", border: `1px solid ${PURPLE}40`, color: "#C9D1D9", fontFamily: "var(--font-mono, monospace)" }}
+          placeholder="Add notes…"
+        />
+        <button onClick={save} disabled={saving}
+          className="mt-0.5 p-1 rounded-md transition-colors"
+          style={{ color: EMERALD, background: "rgba(74,222,128,0.10)", border: "1px solid rgba(74,222,128,0.25)" }}>
+          <Check size={11} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={e => { e.stopPropagation(); setEditing(true); }}
+      className="flex items-center gap-1.5 group cursor-pointer"
+      title="Click to add/edit notes"
+    >
+      {value ? (
+        <span className="text-xs leading-relaxed" style={{ color: MUTED, maxWidth: "200px", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+      ) : (
+        <span className="text-[10px] italic" style={{ color: BORDER }}>Add notes…</span>
+      )}
+      <Pencil size={9} className="opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" style={{ color: MUTED }} />
+    </div>
+  );
+}
+
+// ── Metric Card ─────────────────────────────────────────────────────────────
 function MetricCard({ label, value, sub, icon: Icon, iconColor, trend }: {
   label: string; value: string; sub: string;
   icon: React.ElementType; iconColor: string; trend?: number | null;
@@ -395,8 +453,8 @@ export default function OverviewPage() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                {["Version", "Pass Rate", "Latency", "Cost", "Cases", "Actions", "When"].map(h => (
-                  <th key={h} className={`py-3 text-[11px] font-medium uppercase tracking-wider text-slate-500 ${h === "Version" ? "text-left px-6" : h === "When" ? "text-right px-6" : "text-right px-4"}`}>
+                {["Version", "Notes", "Pass Rate", "Latency", "Cost", "Cases", "Actions", "When"].map(h => (
+                  <th key={h} className={`py-3 text-[11px] font-medium uppercase tracking-wider text-slate-500 ${h === "Version" || h === "Notes" ? "text-left px-6" : h === "When" ? "text-right px-6" : "text-right px-4"}`}>
                     {h}
                   </th>
                 ))}
@@ -443,6 +501,9 @@ export default function OverviewPage() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <NotesCell tag={run.version_tag} initialNotes={run.notes ?? ""} project={selectedProject} />
                     </td>
                     <td className="px-4 py-3.5 w-52"><PassPill rate={run.success_rate} /></td>
                     <td className="px-4 py-3.5 text-right font-mono text-xs text-slate-400">{run.avg_latency_ms.toFixed(0)} ms</td>
