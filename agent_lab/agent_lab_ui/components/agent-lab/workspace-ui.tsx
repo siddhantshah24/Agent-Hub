@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ChevronDown, Code2, Database, X } from "lucide-react";
+import { fetchAgentSnapshot } from "@/lib/fetch-agent-snapshot";
 
 /**
  * Always use same-origin `/api/*` in the browser. Next.js rewrites those to FastAPI
@@ -180,17 +181,11 @@ export function SnapshotModal({ tag, project, onClose }: { tag: string; project:
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const url =
-      project === "default"
-        ? `${API}/api/snapshot/${encodeURIComponent(tag)}`
-        : `${API}/api/snapshot/${encodeURIComponent(tag)}?project=${encodeURIComponent(project)}`;
-    fetch(url)
-      .then(r => r.json())
-      .then(d => {
-        setSnap(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    setLoading(true);
+    fetchAgentSnapshot(tag, project, API).then(d => {
+      setSnap(d);
+      setLoading(false);
+    });
   }, [tag, project]);
 
   return (

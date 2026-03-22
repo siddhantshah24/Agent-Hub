@@ -15,6 +15,7 @@ import type { LucideIcon } from "lucide-react";
 import { VeraMascot } from "@/components/vera";
 import { AgentSnapshotView, type AgentSnapshotData } from "@/components/agent-lab/agent-snapshot-view";
 import { API } from "@/components/agent-lab/workspace-ui";
+import { fetchAgentSnapshot } from "@/lib/fetch-agent-snapshot";
 
 const PURPLE  = "#A78BFA";
 const EMERALD = "#4ADE80";
@@ -790,7 +791,7 @@ export default function RunDetailPage() {
     Promise.all([
       fetch(`${API}/api/versions${pq}`).then(r => r.json()),
       fetch(`${API}/api/samples/${encodeURIComponent(tag)}${pq}`).then(r => r.json()).catch(() => []),
-      fetch(`${API}/api/snapshot/${encodeURIComponent(tag)}${pq}`).then(r => r.json()).catch(() => null),
+      fetchAgentSnapshot(tag, project, API),
     ]).then(([runs, sampleData, snapData]) => {
       const found = Array.isArray(runs) ? runs.find((r: Run) => r.version_tag === tag) : null;
       setRun(found ?? null);
@@ -800,7 +801,7 @@ export default function RunDetailPage() {
     }).catch(() => {
       setRun(null);
       setSamples([]);
-      setSnap(null);
+      setSnap({ available: false, reason: "Failed to load run data from the API." });
       setLoading(false);
     });
   }, [tag, project]);

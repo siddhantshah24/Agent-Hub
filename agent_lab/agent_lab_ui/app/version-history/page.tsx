@@ -18,6 +18,7 @@ import {
 import { AgentSnapshotView, type AgentSnapshotData } from "@/components/agent-lab/agent-snapshot-view";
 import { VeraMascot } from "@/components/vera";
 import { useAgentLabWorkspace } from "@/hooks/use-agentlab-workspace";
+import { fetchAgentSnapshot } from "@/lib/fetch-agent-snapshot";
 
 function VersionHistoryContent() {
   const router = useRouter();
@@ -61,11 +62,8 @@ function VersionHistoryContent() {
     }
     setSnapLoading(true);
     setSnapPreview(null);
-    const pq = project !== "default" ? `?project=${encodeURIComponent(project)}` : "";
-    fetch(`${API}/api/snapshot/${encodeURIComponent(historyTag)}${pq}`)
-      .then(r => r.json())
+    fetchAgentSnapshot(historyTag, project, API)
       .then((d: AgentSnapshotData) => setSnapPreview(d))
-      .catch(() => setSnapPreview(null))
       .finally(() => setSnapLoading(false));
   }, [historyTag, project]);
 

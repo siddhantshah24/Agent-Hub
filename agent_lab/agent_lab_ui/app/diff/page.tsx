@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { API } from "@/components/agent-lab/workspace-ui";
+import { fetchAgentSnapshot } from "@/lib/fetch-agent-snapshot";
 import {
   Sparkles, ArrowLeft, GitCompare, Code2, BarChart3,
   List, CheckCircle2, XCircle, TrendingUp, TrendingDown,
@@ -824,6 +825,7 @@ function DiffContent() {
   const v1      = params.get("v1") ?? "";
   const v2      = params.get("v2") ?? "";
   const project = params.get("project") ?? "";
+  const projectForApi = project || "default";
 
   // Build the project query string once so every fetch uses the right DB
   const pq = project ? `?project=${encodeURIComponent(project)}` : "";
@@ -854,9 +856,9 @@ function DiffContent() {
       fetch(`${API}/api/diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : Promise.reject(r.statusText)),
       fetch(`${API}/api/snapshot-diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : null),
       fetch(`${API}/api/samples-compare/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : []),
-      // Fetch structured snapshot metadata for both versions
-      fetch(`${API}/api/snapshot/${encodeURIComponent(v1)}${pq}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API}/api/snapshot/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : null),
+      // Structured snapshot metadata (handles 404/detail + same path resolution as run page)
+      fetchAgentSnapshot(v1, projectForApi, API),
+      fetchAgentSnapshot(v2, projectForApi, API),
     ])
       .then(([d, s, samps, s1, s2]) => {
         setDiff(d); setSnap(s); setSamples(samps);

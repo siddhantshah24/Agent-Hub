@@ -128,7 +128,7 @@ export function AgentSnapshotView({
   if (!snap) {
     return (
       <p className="px-4 py-8 text-center text-sm" style={{ color: MUTED }}>
-        Loading snapshot…
+        Snapshot data is not available yet. If this persists, refresh the page or check the API connection.
       </p>
     );
   }

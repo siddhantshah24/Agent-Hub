@@ -78,6 +78,67 @@ def _db_for_project(project: Optional[str]) -> Path:
     return db
 
 
+def _resolve_snapshot_dir(snapshot_path: Optional[str], tag: str, db: Path) -> Optional[Path]:
+    """
+    Prefer the path stored in SQLite; fall back to <db.parent>/.agentlab/snapshots/<tag>.
+    Fixes UI "missing snapshot" when the DB was moved or paths point at another machine.
+    """
+    candidates: list[Path] = []
+    if snapshot_path:
+        p = Path(snapshot_path)
+        if p.suffix == ".py":
+            p = p.parent
+        candidates.append(p)
+    candidates.append(db.parent / ".agentlab" / "snapshots" / tag)
+    for d in candidates:
+        try:
+            if d.exists() and d.is_dir():
+                return d
+        except OSError:
+            continue
+    return None
+
+
+def _snapshot_search_roots(snap_dir: Path) -> list[Path]:
+    """Snapshot may store .py files at root or under src/."""
+    roots = [snap_dir]
+    src = snap_dir / "src"
+    if src.is_dir():
+        roots.append(src)
+    return roots
+
+
+def _read_main_py_and_file_list(snap_dir: Path) -> tuple[Optional[str], Optional[str], list[str]]:
+    roots = _snapshot_search_roots(snap_dir)
+    raw_content: Optional[str] = None
+    raw_filename: Optional[str] = None
+    for root in roots:
+        for candidate in ("graph.py", "agent.py"):
+            f = root / candidate
+            if f.is_file():
+                raw_content = f.read_text()
+                raw_filename = candidate
+                break
+        if raw_content is not None:
+            break
+    if raw_content is None:
+        for root in roots:
+            py_files = sorted(root.glob("*.py"))
+            if py_files:
+                raw_content = py_files[0].read_text()
+                raw_filename = py_files[0].name
+                break
+    seen: set[str] = set()
+    all_files: list[str] = []
+    for root in roots:
+        for f in sorted(root.glob("*.py")):
+            if f.name not in seen:
+                seen.add(f.name)
+                all_files.append(f.name)
+    all_files.sort()
+    return raw_content, raw_filename, all_files
+
+
 def _langfuse_trace_full_to_payload(full: object, sample_idx: int, langfuse_host: str) -> dict:
     """Turn a Langfuse trace GET response into the UI payload (execution chain, etc.)."""
     system_prompt: Optional[str] = None
@@ -237,18 +298,18 @@ def get_snapshot(tag: str, project: Optional[str] = None):
     if not run:
         raise HTTPException(404, f"Version '{tag}' not found.")
 
-    snapshot_path = run.get("snapshot_path")
-    if not snapshot_path:
-        return {"available": False, "reason": "No snapshot captured for this version."}
-
-    snap_dir = Path(snapshot_path)
-
-    # Support old single-file snapshots (snapshot_path pointed to graph.py)
-    if snap_dir.suffix == ".py":
-        snap_dir = snap_dir.parent
-
-    if not snap_dir.exists():
-        return {"available": False, "reason": "Snapshot directory not found on disk."}
+    snap_dir = _resolve_snapshot_dir(run.get("snapshot_path"), tag, db)
+    if not snap_dir:
+        if not run.get("snapshot_path"):
+            return {"available": False, "reason": "No snapshot captured for this version."}
+        return {
+            "available": False,
+            "reason": (
+                "Snapshot directory not found on this server. "
+                "If the database came from another machine, copy `.agentlab/snapshots/` "
+                "next to this project's `.agentlab.db`, or run `agentlab eval` on this host."
+            ),
+        }
 
     # Read structured metadata
     meta: dict = {}
@@ -259,22 +320,7 @@ def get_snapshot(tag: str, project: Optional[str] = None):
         except Exception:
             pass
 
-    # Raw source: prefer graph.py, fall back to first .py file
-    raw_content: Optional[str] = None
-    raw_filename: Optional[str] = None
-    for candidate in ["graph.py", "agent.py"]:
-        f = snap_dir / candidate
-        if f.exists():
-            raw_content = f.read_text()
-            raw_filename = candidate
-            break
-    if raw_content is None:
-        py_files = sorted(snap_dir.glob("*.py"))
-        if py_files:
-            raw_content = py_files[0].read_text()
-            raw_filename = py_files[0].name
-
-    all_files = [f.name for f in sorted(snap_dir.glob("*.py"))]
+    raw_content, raw_filename, all_files = _read_main_py_and_file_list(snap_dir)
 
     return {
         "available": True,
@@ -377,33 +423,24 @@ def get_snapshot_diff(v1: str, v2: str, project: Optional[str] = None):
     if not run2:
         raise HTTPException(404, f"Version '{v2}' not found.")
 
-    def _read_snapshot_content(raw_path: Optional[str]) -> tuple[Optional[str], str]:
+    def _read_snapshot_content(raw_path: Optional[str], version_tag: str) -> tuple[Optional[str], str]:
         """
         Returns (content, filename).
-        Handles:
-          - old format: snapshot_path points to a .py file
-          - new format: snapshot_path points to a directory containing graph.py
+        Uses the same path resolution as GET /api/snapshot/{tag} (DB path + fallback
+        next to .agentlab.db, plus src/ layout).
         """
-        if not raw_path:
+        if raw_path:
+            p = Path(raw_path)
+            if p.is_file() and p.exists():
+                return p.read_text(), p.name
+        snap_dir = _resolve_snapshot_dir(raw_path, version_tag, db)
+        if not snap_dir:
             return None, "graph.py"
-        p = Path(raw_path)
-        if not p.exists():
-            return None, "graph.py"
-        if p.is_file():
-            return p.read_text(), p.name
-        if p.is_dir():
-            # New format — prefer graph.py, fall back to first .py file
-            for candidate in ["graph.py", "agent.py"]:
-                f = p / candidate
-                if f.exists():
-                    return f.read_text(), candidate
-            py_files = sorted(p.glob("*.py"))
-            if py_files:
-                return py_files[0].read_text(), py_files[0].name
-        return None, "graph.py"
+        content, fname, _ = _read_main_py_and_file_list(snap_dir)
+        return content, fname or "graph.py"
 
-    v1_content, v1_filename = _read_snapshot_content(run1.get("snapshot_path"))
-    v2_content, v2_filename = _read_snapshot_content(run2.get("snapshot_path"))
+    v1_content, v1_filename = _read_snapshot_content(run1.get("snapshot_path"), v1)
+    v2_content, v2_filename = _read_snapshot_content(run2.get("snapshot_path"), v2)
     filename = v1_filename or v2_filename or "graph.py"
 
     if not v1_content and not v2_content:
