@@ -1,9 +1,0 @@
-agent:
-  # Real SQLite-backed SQL agent — uses list_tables / get_schema / query_db tools
-  # Multi-hop queries require SQL JOINs across users, locations, foods tables
-  entrypoint: "src.graph:run_agent"
-
-dataset:
-  path: "datasets/relational_evals.jsonl"
-  input_key: "question"
-  expected_output_key: "answer"

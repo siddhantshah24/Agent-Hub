@@ -16,12 +16,16 @@ AgentLab has three runtime parts, **all from this repo** when you develop locall
 2. **FastAPI backend** for projects, runs, diff APIs (LLM-backed summaries when a key is configured)  
 3. **Next.js dashboard** for run history, diff viewer, project pages, landing (build with `npm install` under `agent_lab/agent_lab_ui`, optional **Spline** hero asset)
 
-Target agents live under `target_projects/`. Each project has its own
+The repo includes an **empty** `target_projects/` directory in git (a `.gitkeep` file only). **You add agent projects locally** under `target_projects/<name>/` (that content is not committed). Create a folder, run **`agentlab init`** there to scaffold `agent-eval.yml`, then add `src/`, `datasets/`, and agent code as needed.
+
+Each project typically has
 
 - `agent-eval.yml`  
 - `src/` (agent graph code)  
 - `datasets/`  
 - Local `.agentlab.db` and `.agentlab/snapshots/` created when you run evals
+
+The steps below use **`my_agent`** as an example folder name under `target_projects/`. Use your own name or path.
 
 ---
 
@@ -151,8 +155,10 @@ You should see commands `init`, `eval`, `rollback`, `ui`.
 
 ## Step 7 Run a smoke evaluation
 
+Use a folder under `target_projects/` that has a valid `agent-eval.yml` and agent code. If you are starting fresh, create `target_projects/my_agent`, run **`agentlab init`** there, then add `src/`, `datasets/`, and wire paths in the config until **`agentlab eval`** can run. Then from that project directory,
+
 ```bash
-cd target_projects/01_math_multiverse
+cd target_projects/my_agent
 agentlab eval --limit 3
 ```
 
@@ -168,7 +174,7 @@ Expect the following.
 ## Step 8 Create two tags (for compare / diff)
 
 ```bash
-cd target_projects/01_math_multiverse
+cd target_projects/my_agent
 agentlab eval --tag v1
 ```
 
@@ -208,7 +214,7 @@ agentlab ui --api-port 8001 --ui-port 3002
 ```bash
 curl http://localhost:8000/health
 curl http://localhost:8000/api/projects
-curl "http://localhost:8000/api/versions?project=01_math_multiverse"
+curl "http://localhost:8000/api/versions?project=my_agent"
 ```
 
 `/health` should return JSON with a healthy status.
@@ -229,28 +235,14 @@ In the browser,
 
 ## Other target projects (local)
 
-**Enterprise SQL**
-
-```bash
-cd target_projects/02_enterprise_sql
-agentlab eval --tag sql-v1
-```
-
-**Stress typewriter**
-
-```bash
-cd target_projects/03_stress_typewriter
-agentlab eval --tag typew-v1
-```
-
-Use the dashboard **project** dropdown to switch context between projects.
+Create additional folders under `target_projects/` (each with its own `agent-eval.yml` from **`agentlab init`**), run **`agentlab eval`** inside them, then use the dashboard **project** dropdown to switch between projects.
 
 ---
 
 ## Rollback workflow (local)
 
 ```bash
-cd target_projects/01_math_multiverse
+cd target_projects/my_agent
 agentlab rollback --tag v1
 agentlab eval --tag rollback-check
 ```

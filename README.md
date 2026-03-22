@@ -119,7 +119,7 @@ Shipping **AI agents** at scale is a **real operational problem**: teams cannot 
 
 ### Technical execution — *Does the core functionality work? Does it demonstrate the idea effectively using AI?*
 
-The path is **fully implemented**: **CLI** → **SQLite** → **FastAPI** (feedback, notes, export, diff, **LLM-assisted** summaries and suggestions) → **Next.js** UI. **Multiple** reference projects ship with datasets. **AI** is used where it adds **reviewer-facing** value (summaries, suggestions), grounded in **your** metrics and **your** feedback, not as a gimmick.
+The path is **fully implemented**: **CLI** → **SQLite** → **FastAPI** (feedback, notes, export, diff, **LLM-assisted** summaries and suggestions) → **Next.js** UI. You bring **your own** agent projects under `target_projects/` (see **`agentlab init`**). **AI** is used where it adds **reviewer-facing** value (summaries, suggestions), grounded in **your** metrics and **your** feedback, not as a gimmick.
 
 ### Trust, harms, and empowerment — *Did the team think seriously about failure modes? Does this empower people?*
 
@@ -138,19 +138,15 @@ AgentHub/
 ├── agent_lab/
 │   ├── agent_lab_core/     # CLI, runner, SQLite, FastAPI
 │   └── agent_lab_ui/       # Next.js (dashboard, diff, runs, docs, Spline hero)
-├── target_projects/        # Demo agents + datasets
+├── target_projects/        # Empty in git — add your agent projects here (not committed)
 ├── SETUP.md
 ├── .env.example
 └── README.md
 ```
 
-**Bundled target projects**
+**Target projects**
 
-- `01_math_multiverse` — tool-use and math-style compliance  
-- `02_enterprise_sql` — multi-hop SQL over SQLite  
-- `03_stress_typewriter` — long tool-call stress patterns
-
-Each project includes `agent-eval.yml`, `src/`, and `datasets/`.
+`target_projects/` is kept in the repo as an **empty directory** (via `.gitignore` rules and a `.gitkeep` file). **Create** a subfolder, run **`agentlab init`** inside it to scaffold `agent-eval.yml`, then add `src/`, `datasets/`, and your agent code. Each project typically has `agent-eval.yml`, `src/`, and `datasets/`.
 
 ---
 
@@ -159,7 +155,7 @@ Each project includes `agent-eval.yml`, `src/`, and `datasets/`.
 1. **Python 3.10+**, **Node 18+**, **Docker** (recommended for local Langfuse).
 2. `pip install -e agent_lab/` and `npm install` in `agent_lab/agent_lab_ui`.
 3. Copy `**.env.example`** to `**.env**`. Set `**OPENAI_API_KEY**` and Langfuse keys as needed.
-4. `cd target_projects/01_math_multiverse`, then `agentlab eval --limit 5`, then `agentlab ui`.
+4. Create `target_projects/my_agent` (or any name), `cd` there, run **`agentlab init`**, add agent code and datasets until **`agentlab eval --limit 5`** succeeds, then from repo root run **`agentlab ui`**.
 
 Defaults: API **8000**, UI **3001**. Full detail: **[SETUP.md](SETUP.md)**.
 

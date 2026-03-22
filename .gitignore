@@ -33,8 +33,6 @@ build/
 **/.agentlab.db-wal
 **/.agentlab/snapshots/
 
-# target_projects — machine-local folders inside each demo project (not source)
-target_projects/**/.agentlab/
-target_projects/**/.venv/
-target_projects/**/venv/
-target_projects/**/.ipynb_checkpoints/
+# target_projects — only .gitkeep is tracked; add demo agents locally (not committed)
+target_projects/*
+!target_projects/.gitkeep

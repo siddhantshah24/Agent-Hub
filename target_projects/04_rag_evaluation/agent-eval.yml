@@ -1,8 +1,0 @@
-agent:
-  entrypoint: "src.graph:run_agent"
-
-dataset:
-  path: "datasets/rag_evals.jsonl"
-  input_key: "question"
-  expected_output_key: "expected"
-  match_mode: "contains"

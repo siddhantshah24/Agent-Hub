@@ -1,8 +1,0 @@
-agent:
-  # Typewriter stress test using langchain-benchmarks Tool Usage - Typewriter (26 tools)
-  entrypoint: "src.graph:run_agent"
-
-dataset:
-  path: "datasets/typewriter_evals.jsonl"
-  input_key: "question"
-  expected_output_key: "answer"
