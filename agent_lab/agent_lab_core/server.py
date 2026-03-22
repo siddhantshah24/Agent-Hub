@@ -20,8 +20,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
+from openai import OpenAI
 
-from .db import get_all_runs, get_run_by_tag, get_samples_for_tag, update_run_notes
+from .db import (
+    get_all_runs, get_run_by_tag, get_samples_for_tag, update_run_notes,
+    upsert_feedback, get_feedback_for_run, get_all_feedback_for_export,
+    init_db,
+)
 
 app = FastAPI(title="Agent Lab API", version="0.1.0")
 
@@ -58,9 +63,14 @@ def _get_all_dbs() -> dict[str, Path]:
 
 def _db_for_project(project: Optional[str]) -> Path:
     if not project or project == "default":
-        return _db_path()
-    all_dbs = _get_all_dbs()
-    return all_dbs.get(project, _db_path())
+        db = _db_path()
+    else:
+        all_dbs = _get_all_dbs()
+        db = all_dbs.get(project, _db_path())
+    # Always ensure schema is up-to-date (idempotent — safe to call on every request)
+    if db.exists():
+        init_db(db)
+    return db
 
 
 def _groq_client() -> Groq:
@@ -206,10 +216,20 @@ def get_diff(v1: str, v2: str, project: Optional[str] = None):
     if not run2:
         raise HTTPException(404, f"Version '{v2}' not found.")
 
+    def _delta(key: str, decimals: int = 2) -> Optional[float]:
+        v1_val = run1.get(key)
+        v2_val = run2.get(key)
+        if v1_val is not None and v2_val is not None:
+            return round(v2_val - v1_val, decimals)
+        return None
+
     deltas = {
         "success_rate": round(run2["success_rate"] - run1["success_rate"], 2),
         "avg_latency_ms": round(run2["avg_latency_ms"] - run1["avg_latency_ms"], 2),
         "avg_cost_usd": round(run2["avg_cost_usd"] - run1["avg_cost_usd"], 6),
+        "avg_ragas_faithfulness": _delta("avg_ragas_faithfulness", 4),
+        "avg_ragas_relevancy":    _delta("avg_ragas_relevancy", 4),
+        "avg_ragas_precision":    _delta("avg_ragas_precision", 4),
     }
 
     samples1 = {s["sample_idx"]: s for s in get_samples_for_tag(db, v1)}
@@ -561,6 +581,349 @@ def find_dotenv(usecwd=False):
         if candidate.exists():
             return str(candidate)
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Feedback endpoints
+# ---------------------------------------------------------------------------
+
+class FeedbackBody(BaseModel):
+    tag: str
+    sample_idx: int
+    score: int          # +1 or -1
+    comment: str = ""
+    project: Optional[str] = None
+
+
+@app.post("/api/feedback")
+def post_feedback(body: FeedbackBody):
+    """Save (or update) human feedback for a single sample."""
+    db = _db_for_project(body.project)
+    if not db.exists():
+        raise HTTPException(404, "No database found.")
+    run = get_run_by_tag(db, body.tag)
+    if not run:
+        raise HTTPException(404, f"Version '{body.tag}' not found.")
+    if body.score not in (1, -1):
+        raise HTTPException(400, "score must be +1 or -1.")
+    upsert_feedback(db, run["id"], body.sample_idx, body.score, body.comment)
+    return {"ok": True, "tag": body.tag, "sample_idx": body.sample_idx, "score": body.score}
+
+
+@app.get("/api/feedback/{tag}")
+def get_feedback(tag: str, project: Optional[str] = None):
+    """Return all human feedback for a run."""
+    db = _db_for_project(project)
+    run = get_run_by_tag(db, tag)
+    if not run:
+        raise HTTPException(404, f"Version '{tag}' not found.")
+    return get_feedback_for_run(db, run["id"])
+
+
+# ---------------------------------------------------------------------------
+# LLM suggestion engine
+# ---------------------------------------------------------------------------
+
+@app.post("/api/suggest/{tag}")
+def suggest_improvements(tag: str, project: Optional[str] = None):
+    """
+    Given the current agent snapshot + eval results + human feedback,
+    ask GPT-4o-mini to suggest concrete improvements.
+    """
+    db = _db_for_project(project)
+    run = get_run_by_tag(db, tag)
+    if not run:
+        raise HTTPException(404, f"Version '{tag}' not found.")
+
+    # Load snapshot metadata
+    snap_meta: dict = {}
+    snap_path = run.get("snapshot_path")
+    if snap_path:
+        snap_dir = Path(snap_path)
+        if snap_dir.suffix == ".py":
+            snap_dir = snap_dir.parent
+        meta_file = snap_dir / "snapshot.json"
+        if meta_file.exists():
+            try:
+                snap_meta = json.loads(meta_file.read_text())
+            except Exception:
+                pass
+
+    system_prompts = snap_meta.get("system_prompts", {})
+    active_prompt_key = system_prompts.get("_active", "")
+    active_prompt = system_prompts.get(active_prompt_key, "")
+    if not active_prompt:
+        # fallback: first non-_active key
+        active_prompt = next((v for k, v in system_prompts.items() if not k.startswith("_")), "")
+
+    model_cfg = snap_meta.get("model", {})
+    tools = snap_meta.get("tools", [])
+
+    # Load samples + feedback
+    samples = get_samples_for_tag(db, tag)
+    feedback_rows = get_feedback_for_run(db, run["id"])
+    fb_by_idx = {f["sample_idx"]: f for f in feedback_rows}
+
+    total = len(samples)
+    passed = sum(1 for s in samples if s["passed"])
+
+    # Build sample summary (cap at 30 for prompt length)
+    sample_lines = []
+    for s in samples[:30]:
+        fb = fb_by_idx.get(s["sample_idx"])
+        fb_str = ""
+        if fb:
+            icon = "👍" if fb["score"] == 1 else "👎"
+            fb_str = f" | Human: {icon}"
+            if fb.get("comment"):
+                fb_str += f' "{fb["comment"]}"'
+        status = "PASS" if s["passed"] else "FAIL"
+        sample_lines.append(
+            f"  [{status}] Sample {s['sample_idx']}: Q=\"{s['input'][:80]}\" → Got=\"{s['got'][:60]}\"{fb_str}"
+        )
+
+    tool_summary = ", ".join(f"{t['name']} ({t['description'][:60]})" for t in tools[:10]) or "none"
+    model_str = f"{model_cfg.get('class', 'ChatOpenAI')} model={model_cfg.get('model', 'unknown')}, temperature={model_cfg.get('temperature', 0)}"
+
+    prompt_text = f"""You are an expert AI agent improvement assistant. Analyze the agent evaluation results and suggest specific, actionable improvements.
+
+CURRENT AGENT CONFIG:
+System prompt: {active_prompt[:600] or '(not captured)'}
+
+Model: {model_str}
+Tools: {tool_summary}
+
+EVALUATION RESULTS ({total} samples, {passed}/{total} passed = {round(passed/total*100) if total else 0}%):
+{chr(10).join(sample_lines)}
+
+Human feedback: {sum(1 for f in feedback_rows if f['score']==1)} thumbs up, {sum(1 for f in feedback_rows if f['score']==-1)} thumbs down
+
+Based on the failing samples and human feedback, suggest up to 4 specific improvements. For EACH suggestion return a JSON object with exactly these fields:
+- "type": one of "system_prompt", "model_config", "tool_config"
+- "reason": 1-2 sentences explaining why (reference specific sample numbers if possible)
+- "current_value": the current value as a string
+- "suggested_value": the new proposed value as a string
+
+Return ONLY a JSON array of suggestion objects, no other text."""
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt_text}],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content or "{}"
+        parsed = json.loads(raw)
+        # Accept both {"suggestions": [...]} and [...]
+        suggestions = parsed if isinstance(parsed, list) else parsed.get("suggestions", [])
+    except Exception as e:
+        raise HTTPException(500, f"LLM suggestion failed: {e}")
+
+    return {"tag": tag, "suggestions": suggestions}
+
+
+# ---------------------------------------------------------------------------
+# Apply suggestion — patches graph.py in-place
+# ---------------------------------------------------------------------------
+
+class ApplySuggestionBody(BaseModel):
+    type: str           # "system_prompt" | "model_config"
+    suggested_value: str
+    project: Optional[str] = None
+
+
+@app.post("/api/apply-suggestion/{tag}")
+def apply_suggestion(tag: str, body: ApplySuggestionBody):
+    """
+    Apply a suggested change directly to the live graph.py.
+    Only system_prompt and model_config types are auto-applied.
+    tool_config returns instructions instead.
+    """
+    db = _db_for_project(body.project)
+    run = get_run_by_tag(db, tag)
+    if not run:
+        raise HTTPException(404, f"Version '{tag}' not found.")
+
+    if body.type == "tool_config":
+        return {
+            "applied": False,
+            "message": "Tool config changes require manual editing of graph.py. "
+                       "The suggested value has been shown above — please copy it into the relevant @tool function.",
+        }
+
+    # Find graph.py in the project root (walk up from snapshot path)
+    snap_path = run.get("snapshot_path")
+    if not snap_path:
+        raise HTTPException(400, "No snapshot path recorded — cannot locate graph.py.")
+
+    snap_dir = Path(snap_path)
+    if snap_dir.suffix == ".py":
+        snap_dir = snap_dir.parent
+
+    # Project root is typically .agentlab/snapshots/<tag> → project_root is 3 levels up
+    project_root = snap_dir.parent.parent.parent
+    graph_file = project_root / "src" / "graph.py"
+    if not graph_file.exists():
+        # Try agent.py fallback
+        graph_file = project_root / "src" / "agent.py"
+    if not graph_file.exists():
+        raise HTTPException(400, f"Could not locate src/graph.py under {project_root}")
+
+    source = graph_file.read_text(encoding="utf-8")
+    new_value = body.suggested_value
+
+    if body.type == "system_prompt":
+        import re
+        # Find the active SYSTEM_PROMPT string assignment (handle triple-quoted and single-quoted)
+        # Pattern: SYSTEM_PROMPT = "..." or SYSTEM_PROMPT = (...)
+        # We replace the content of whichever SYSTEM_PROMPT_V* is active, or SYSTEM_PROMPT directly
+        # Strategy: find SYSTEM_PROMPT = SYSTEM_PROMPT_Vx alias first
+        alias_match = re.search(r'SYSTEM_PROMPT\s*=\s*(SYSTEM_PROMPT_V\w+)', source)
+        if alias_match:
+            target_var = alias_match.group(1)
+        else:
+            target_var = "SYSTEM_PROMPT"
+
+        # Now replace the string value of target_var
+        # Handle multi-line parenthesised strings: VAR = (\n    "..."\n    "..."\n)
+        paren_pat = re.compile(
+            rf'^{re.escape(target_var)}\s*=\s*\(([^)]+)\)',
+            re.MULTILINE | re.DOTALL,
+        )
+        quote_pat = re.compile(
+            rf'^{re.escape(target_var)}\s*=\s*"([^"]*)"',
+            re.MULTILINE,
+        )
+        triple_pat = re.compile(
+            rf'^{re.escape(target_var)}\s*=\s*"""([^"]*)"""',
+            re.MULTILINE | re.DOTALL,
+        )
+        escaped = new_value.replace('\\', '\\\\').replace('"', '\\"')
+        replacement = f'{target_var} = "{escaped}"'
+        if triple_pat.search(source):
+            source = triple_pat.sub(replacement, source, count=1)
+        elif paren_pat.search(source):
+            source = paren_pat.sub(replacement, source, count=1)
+        elif quote_pat.search(source):
+            source = quote_pat.sub(replacement, source, count=1)
+        else:
+            raise HTTPException(400, f"Could not locate '{target_var}' assignment in graph.py.")
+
+    elif body.type == "model_config":
+        import re
+        # Replace model= and temperature= inside ChatOpenAI(...) call
+        # Extract model and temperature from suggested_value if JSON, else treat as model name
+        try:
+            cfg = json.loads(new_value) if new_value.strip().startswith("{") else {}
+        except Exception:
+            cfg = {}
+        model_name = cfg.get("model", new_value.strip())
+        temperature = cfg.get("temperature", None)
+
+        def replace_model(m: re.Match) -> str:
+            inner = m.group(1)
+            inner = re.sub(r'model\s*=\s*["\'][^"\']*["\']', f'model="{model_name}"', inner)
+            if temperature is not None:
+                inner = re.sub(r'temperature\s*=\s*[\d.]+', f'temperature={temperature}', inner)
+            return f"ChatOpenAI({inner})"
+
+        source, n = re.subn(r'ChatOpenAI\(([^)]*)\)', replace_model, source)
+        if n == 0:
+            raise HTTPException(400, "Could not locate ChatOpenAI(...) in graph.py.")
+
+    graph_file.write_text(source, encoding="utf-8")
+    return {"applied": True, "file": str(graph_file), "type": body.type}
+
+
+# ---------------------------------------------------------------------------
+# RLHF dataset export
+# ---------------------------------------------------------------------------
+
+@app.get("/api/export-rlhf/{tag}")
+def export_rlhf(tag: str, project: Optional[str] = None):
+    """
+    Export human feedback + sample results as a DPO-compatible JSONL.
+    Returns as an inline JSON response (frontend triggers download via blob URL).
+    """
+    from fastapi.responses import Response
+
+    db = _db_for_project(project)
+    run = get_run_by_tag(db, tag)
+    if not run:
+        raise HTTPException(404, f"Version '{tag}' not found.")
+
+    # Load snapshot to get system prompt
+    snap_meta: dict = {}
+    snap_path = run.get("snapshot_path")
+    if snap_path:
+        snap_dir = Path(snap_path)
+        if snap_dir.suffix == ".py":
+            snap_dir = snap_dir.parent
+        meta_file = snap_dir / "snapshot.json"
+        if meta_file.exists():
+            try:
+                snap_meta = json.loads(meta_file.read_text())
+            except Exception:
+                pass
+
+    system_prompts = snap_meta.get("system_prompts", {})
+    active_key = system_prompts.get("_active", "")
+    system_prompt = system_prompts.get(active_key, "")
+    if not system_prompt:
+        system_prompt = next((v for k, v in system_prompts.items() if not k.startswith("_")), "")
+
+    rows = get_all_feedback_for_export(db, tag)
+
+    # Also load ALL samples for the run (not just those with feedback)
+    all_samples = get_samples_for_tag(db, tag)
+    fb_by_idx = {r["sample_idx"]: r for r in rows}
+
+    lines = []
+    for s in all_samples:
+        fb = fb_by_idx.get(s["sample_idx"], {})
+        human_score = fb.get("human_score")
+        human_comment = fb.get("human_comment", "")
+
+        input_messages = []
+        if system_prompt:
+            input_messages.append({"role": "system", "content": system_prompt})
+        input_messages.append({"role": "user", "content": s["input"]})
+
+        # For DPO: passing answers are "preferred", failing are "non_preferred"
+        record: dict = {
+            "input": {"messages": input_messages},
+            "preferred_output": None,
+            "non_preferred_output": None,
+            "label": int(s["passed"]),
+            "human_score": human_score,
+            "comment": human_comment,
+            "run_tag": tag,
+            "sample_idx": s["sample_idx"],
+            "expected": s["expected"],
+            "got": s["got"],
+        }
+
+        if s["passed"]:
+            record["preferred_output"] = [{"role": "assistant", "content": s["got"]}]
+        else:
+            record["non_preferred_output"] = [{"role": "assistant", "content": s["got"]}]
+
+        # If human explicitly downvoted a passing answer, demote it
+        if human_score == -1 and s["passed"]:
+            record["preferred_output"] = None
+            record["non_preferred_output"] = [{"role": "assistant", "content": s["got"]}]
+
+        lines.append(json.dumps(record, ensure_ascii=False))
+
+    content = "\n".join(lines)
+    filename = f"rlhf_{tag}.jsonl"
+    return Response(
+        content=content,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/health")

@@ -16,3 +16,6 @@ Requires-Dist: python-dotenv>=1.0
 Requires-Dist: rich>=13.7
 Requires-Dist: openai>=1.30
 Requires-Dist: langchain-benchmarks==0.0.14
+Requires-Dist: ragas>=0.2
+Requires-Dist: faiss-cpu>=1.7
+Requires-Dist: langchain-community>=0.2

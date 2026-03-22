@@ -9,6 +9,9 @@ import {
   CheckCircle2, XCircle, Code2, ChevronDown, ChevronUp,
   Hash, MessageSquare, Cpu, Wrench, ChevronRight, Camera,
   Brain, Terminal, ExternalLink, AlertCircle, Loader2,
+  Shield, Target, ScanSearch,
+  ThumbsUp, ThumbsDown, Send, Sparkles, Download,
+  CheckCheck,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -29,6 +32,9 @@ interface Run {
   avg_latency_ms: number; avg_cost_usd: number;
   total_cases: number; snapshot_path: string | null;
   content_hash: string | null; timestamp: string;
+  avg_ragas_faithfulness: number | null;
+  avg_ragas_relevancy: number | null;
+  avg_ragas_precision: number | null;
 }
 interface Sample {
   sample_idx: number; input: string; expected: string;
@@ -99,6 +105,55 @@ function Tab({ active, icon: Icon, label, onClick }: {
   );
 }
 
+// ── Expandable tool output ─────────────────────────────────────────────────────
+function ToolStep({ step, isLast, accentColor }: { step: ChainStep; isLast: boolean; accentColor: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const output = step.output ?? "";
+  const PREVIEW = 160;
+  const needsToggle = output.length > PREVIEW;
+
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex flex-col items-center shrink-0" style={{ width: "20px" }}>
+        <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+          style={{ background: "rgba(252,211,77,0.12)", border: "1px solid rgba(252,211,77,0.30)" }}>
+          <Wrench size={9} style={{ color: accentColor }} />
+        </div>
+        {!isLast && <div className="w-px flex-1 mt-0.5" style={{ background: BORDER, minHeight: "12px" }} />}
+      </div>
+      <div className="flex-1 min-w-0 mb-2 rounded-lg px-3 py-2"
+        style={{ background: BG, border: `1px solid ${BORDER}` }}>
+        <div className="flex items-start gap-2 flex-wrap">
+          <span className="text-[10px] font-bold shrink-0" style={{ color: accentColor, fontFamily: MONO }}>
+            {step.name}
+          </span>
+          <span className="text-[10px] flex-1" style={{ color: MUTED, fontFamily: MONO }}>
+            ({step.input})
+          </span>
+        </div>
+        {output && (
+          <div className="mt-1.5">
+            <div className="flex items-start gap-1.5">
+              <ChevronRight size={9} className="mt-0.5 shrink-0" style={{ color: MUTED }} />
+              <span className="text-xs whitespace-pre-wrap break-words" style={{ color: EMERALD, fontFamily: MONO }}>
+                {expanded || !needsToggle ? output : output.slice(0, PREVIEW) + "…"}
+              </span>
+            </div>
+            {needsToggle && (
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className="mt-1 text-[10px] font-semibold ml-4 hover:opacity-80 transition-opacity"
+                style={{ color: PURPLE }}>
+                {expanded ? "▲ show less" : `▼ show all (${output.length} chars)`}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Execution chain (identical to diff page) ───────────────────────────────────
 function ExecutionChain({ chain }: { chain?: ChainStep[] }) {
   const steps = (chain ?? []).filter(s => s.type === "llm" || s.type === "tool");
@@ -161,34 +216,7 @@ function ExecutionChain({ chain }: { chain?: ChainStep[] }) {
 
         // TOOL step
         return (
-          <div key={i} className="flex items-start gap-2">
-            <div className="flex flex-col items-center shrink-0" style={{ width: "20px" }}>
-              <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                style={{ background: "rgba(252,211,77,0.12)", border: "1px solid rgba(252,211,77,0.30)" }}>
-                <Wrench size={9} style={{ color: AMB }} />
-              </div>
-              {!isLast && <div className="w-px flex-1 mt-0.5" style={{ background: BORDER, minHeight: "12px" }} />}
-            </div>
-            <div className="flex-1 min-w-0 mb-2 rounded-lg px-3 py-2"
-              style={{ background: BG, border: `1px solid ${BORDER}` }}>
-              <div className="flex items-start gap-2 flex-wrap">
-                <span className="text-[10px] font-bold shrink-0" style={{ color: AMB, fontFamily: MONO }}>
-                  {step.name}
-                </span>
-                <span className="text-[10px] flex-1 truncate" style={{ color: MUTED, fontFamily: MONO }}>
-                  ({step.input?.slice(0, 80)}{(step.input?.length ?? 0) > 80 ? "…" : ""})
-                </span>
-              </div>
-              {step.output && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <ChevronRight size={9} style={{ color: MUTED }} />
-                  <span className="text-xs font-semibold" style={{ color: EMERALD, fontFamily: MONO }}>
-                    {step.output.slice(0, 120)}{step.output.length > 120 ? "…" : ""}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
+          <ToolStep key={i} step={step} isLast={isLast} accentColor={AMB} />
         );
       })}
     </div>
@@ -360,7 +388,90 @@ function TracesTab({ samples, traces, tracesLoading, tag }: {
 }
 
 // ── Sample row (Samples tab) ───────────────────────────────────────────────────
-function SampleRow({ s }: { s: Sample }) {
+// ── FeedbackButtons ─────────────────────────────────────────────────────────
+function FeedbackButtons({ sampleIdx, tag, project }: { sampleIdx: number; tag: string; project: string }) {
+  const [score, setScore] = useState<1 | -1 | null>(null);
+  const [comment, setComment] = useState("");
+  const [showComment, setShowComment] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const save = async (s: 1 | -1, c?: string) => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/api/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tag, sample_idx: sampleIdx, score: s, comment: c ?? comment, project }),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  const handleThumb = (s: 1 | -1) => {
+    const newScore = score === s ? null : s;
+    setScore(newScore as 1 | -1 | null);
+    if (newScore !== null) {
+      setShowComment(true);
+      save(newScore);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 items-end" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => handleThumb(1)}
+          title="Thumbs up"
+          className="p-1 rounded transition-colors"
+          style={{
+            color: score === 1 ? "#4ADE80" : "#9B97BB",
+            background: score === 1 ? "#4ADE8015" : "transparent",
+          }}
+        >
+          <ThumbsUp size={13} />
+        </button>
+        <button
+          onClick={() => handleThumb(-1)}
+          title="Thumbs down"
+          className="p-1 rounded transition-colors"
+          style={{
+            color: score === -1 ? "#FF7A96" : "#9B97BB",
+            background: score === -1 ? "#FF7A9615" : "transparent",
+          }}
+        >
+          <ThumbsDown size={13} />
+        </button>
+        {saved && <CheckCheck size={11} className="text-emerald-400" />}
+        {saving && <Loader2 size={11} className="animate-spin" style={{ color: MUTED }} />}
+      </div>
+      {showComment && score !== null && (
+        <div className="flex items-center gap-1">
+          <input
+            className="text-xs px-2 py-0.5 rounded outline-none bg-transparent border"
+            style={{ borderColor: BORDER, color: "white", width: 120 }}
+            placeholder="Add comment…"
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") save(score!); }}
+            autoFocus
+          />
+          <button
+            onClick={() => save(score!)}
+            className="p-1 rounded"
+            style={{ color: PURPLE }}
+            title="Save comment"
+          >
+            <Send size={11} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SampleRow({ s, tag, project }: { s: Sample; tag: string; project: string }) {
   const [open, setOpen] = useState(false);
   const color = s.passed ? EMERALD : ROSE;
   const isErr = s.got.startsWith("ERROR:");
@@ -390,13 +501,16 @@ function SampleRow({ s }: { s: Sample }) {
           </span>
         </td>
         <td className="px-4 py-3 text-xs font-mono text-right" style={{ color: MUTED }}>{s.latency_ms.toFixed(0)} ms</td>
+        <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+          <FeedbackButtons sampleIdx={s.sample_idx} tag={tag} project={project} />
+        </td>
         <td className="px-4 py-3 text-right">
           {open ? <ChevronUp size={14} style={{ color: MUTED }} /> : <ChevronDown size={14} style={{ color: MUTED }} />}
         </td>
       </tr>
       {open && (
         <tr style={{ background: "#18152C", borderBottom: `1px solid ${BORDER}` }}>
-          <td colSpan={7} className="px-6 py-4">
+          <td colSpan={8} className="px-6 py-4">
             <div className="grid grid-cols-3 gap-4 text-xs font-mono">
               <div>
                 <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: MUTED }}>Input</p>
@@ -415,6 +529,203 @@ function SampleRow({ s }: { s: Sample }) {
         </tr>
       )}
     </>
+  );
+}
+
+// ── SuggestionPanel ──────────────────────────────────────────────────────────
+interface Suggestion {
+  type: "system_prompt" | "model_config" | "tool_config";
+  reason: string;
+  current_value: string;
+  suggested_value: string;
+}
+
+function SuggestionCard({
+  s, tag, project, onApplied,
+}: { s: Suggestion; tag: string; project: string; onApplied: () => void }) {
+  const [dismissed, setDismissed] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [applyMsg, setApplyMsg] = useState("");
+
+  const typeLabel: Record<string, string> = {
+    system_prompt: "System Prompt Change",
+    model_config: "Model Config Change",
+    tool_config: "Tool Config Suggestion",
+  };
+  const typeColor: Record<string, string> = {
+    system_prompt: "#A78BFA",
+    model_config: "#38BDF8",
+    tool_config: "#F59E0B",
+  };
+  const color = typeColor[s.type] ?? PURPLE;
+
+  if (dismissed) return null;
+
+  const apply = async () => {
+    setApplying(true);
+    try {
+      const res = await fetch(`${API}/api/apply-suggestion/${encodeURIComponent(tag)}?project=${encodeURIComponent(project)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: s.type, suggested_value: s.suggested_value, project }),
+      });
+      const data = await res.json();
+      if (data.applied) {
+        setApplied(true);
+        setApplyMsg(`✓ Applied to ${data.file?.split("/").slice(-2).join("/")}`);
+        onApplied();
+      } else {
+        setApplyMsg(data.message ?? "Cannot auto-apply tool config.");
+      }
+    } catch (e: any) {
+      setApplyMsg(`Error: ${e.message}`);
+    } finally { setApplying(false); }
+  };
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${color}30`, background: `${color}08` }}>
+      <div className="flex items-center gap-2 px-4 py-2.5" style={{ borderBottom: `1px solid ${color}20` }}>
+        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+          style={{ color, background: `${color}20` }}>
+          {typeLabel[s.type] ?? s.type}
+        </span>
+      </div>
+      <div className="p-4 space-y-3">
+        <p className="text-sm text-slate-300 leading-relaxed">{s.reason}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg p-3" style={{ background: "#FF7A9610", border: "1px solid #FF7A9630" }}>
+            <p className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: ROSE }}>Before</p>
+            <p className="text-xs font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words line-clamp-6">
+              {s.current_value || "(not captured)"}
+            </p>
+          </div>
+          <div className="rounded-lg p-3" style={{ background: "#4ADE8010", border: "1px solid #4ADE8030" }}>
+            <p className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: EMERALD }}>After</p>
+            <p className="text-xs font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words line-clamp-6">
+              {s.suggested_value}
+            </p>
+          </div>
+        </div>
+        {applyMsg && (
+          <p className="text-xs rounded px-3 py-2" style={{ color: applied ? EMERALD : AMB, background: "#ffffff08" }}>
+            {applyMsg}
+          </p>
+        )}
+        <div className="flex items-center gap-2 pt-1">
+          {s.type !== "tool_config" && !applied && (
+            <button
+              onClick={apply}
+              disabled={applying}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              style={{ background: `${color}20`, color, border: `1px solid ${color}40` }}
+            >
+              {applying ? <Loader2 size={11} className="animate-spin" /> : <CheckCheck size={11} />}
+              Apply to graph.py
+            </button>
+          )}
+          {s.type === "tool_config" && (
+            <span className="text-xs" style={{ color: AMB }}>Manual edit required</span>
+          )}
+          <button
+            onClick={() => setDismissed(true)}
+            className="px-3 py-1.5 rounded-lg text-xs transition-colors"
+            style={{ color: MUTED, border: `1px solid ${BORDER}` }}
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuggestionPanel({ tag, project }: { tag: string; project: string }) {
+  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const generate = async () => {
+    setLoading(true);
+    setError("");
+    setSuggestions([]);
+    try {
+      const res = await fetch(
+        `${API}/api/suggest/${encodeURIComponent(tag)}?project=${encodeURIComponent(project)}`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Unknown error");
+      }
+      const data = await res.json();
+      setSuggestions(data.suggestions ?? []);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to generate suggestions.");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
+      <div className="flex items-center justify-between px-5 py-3.5"
+        style={{ borderBottom: `1px solid ${BORDER}`, background: "#1A1729" }}>
+        <div className="flex items-center gap-2.5">
+          <Sparkles size={14} style={{ color: PURPLE }} />
+          <span className="text-sm font-semibold text-slate-200">LLM Improvement Suggestions</span>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#A78BFA20", color: PURPLE }}>
+            AI-Powered
+          </span>
+        </div>
+        <button
+          onClick={generate}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+          style={{
+            background: loading ? "#1A1729" : "linear-gradient(135deg, #7C3AED, #6D28D9)",
+            color: loading ? MUTED : "white",
+            border: `1px solid ${loading ? BORDER : "#7C3AED50"}`,
+          }}
+        >
+          {loading ? (
+            <><Loader2 size={13} className="animate-spin" /> Analyzing…</>
+          ) : (
+            <><Sparkles size={13} /> Generate Suggestions</>
+          )}
+        </button>
+      </div>
+
+      {error && (
+        <div className="px-5 py-4">
+          <p className="text-sm text-rose-400">{error}</p>
+        </div>
+      )}
+
+      {!loading && suggestions.length === 0 && !error && (
+        <div className="px-5 py-8 flex flex-col items-center gap-2 text-center">
+          <Sparkles size={24} style={{ color: `${PURPLE}50` }} />
+          <p className="text-sm" style={{ color: MUTED }}>
+            Click <strong className="text-slate-300">Generate Suggestions</strong> to let GPT-4o-mini analyse
+            the evaluation results and human feedback, then suggest improvements to the system prompt,
+            model configuration, or tools.
+          </p>
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <div className="p-4 space-y-4">
+          {suggestions.map((s, i) => (
+            <SuggestionCard
+              key={`${refreshKey}-${i}`}
+              s={s}
+              tag={tag}
+              project={project}
+              onApplied={() => setRefreshKey(k => k + 1)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -743,6 +1054,15 @@ export default function RunDetailPage() {
             })}
           </p>
         </div>
+        {/* RLHF Export button */}
+        <a
+          href={`${API}/api/export-rlhf/${encodeURIComponent(tag)}?project=${encodeURIComponent(project)}`}
+          download={`rlhf_${tag}.jsonl`}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium shrink-0 self-start mt-1 transition-colors"
+          style={{ background: "#A78BFA15", color: PURPLE, border: `1px solid #A78BFA30` }}
+        >
+          <Download size={14} /> Export RLHF Dataset
+        </a>
       </div>
 
       {/* Stat cards */}
@@ -757,6 +1077,47 @@ export default function RunDetailPage() {
         <StatCard label="Total Samples" value={String(run.total_cases)}
           sub={`${failCount} failed`} icon={Layers} color={PURPLE} />
       </div>
+
+      {/* RAGAS metric cards — only shown for RAG agents */}
+      {run.avg_ragas_faithfulness !== null && run.avg_ragas_faithfulness !== undefined && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: MUTED }}>
+            RAGAS Semantic Quality Scores
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              label="Faithfulness"
+              value={(run.avg_ragas_faithfulness ?? 0).toFixed(3)}
+              sub="answer grounded in retrieved context"
+              icon={Shield}
+              color={
+                (run.avg_ragas_faithfulness ?? 0) >= 0.8 ? EMERALD :
+                (run.avg_ragas_faithfulness ?? 0) >= 0.6 ? AMB : ROSE
+              }
+            />
+            <StatCard
+              label="Answer Relevancy"
+              value={run.avg_ragas_relevancy != null ? run.avg_ragas_relevancy.toFixed(3) : "—"}
+              sub="answer relevance to the question"
+              icon={Target}
+              color={
+                (run.avg_ragas_relevancy ?? 0) >= 0.8 ? EMERALD :
+                (run.avg_ragas_relevancy ?? 0) >= 0.6 ? AMB : ROSE
+              }
+            />
+            <StatCard
+              label="Context Precision"
+              value={run.avg_ragas_precision != null ? run.avg_ragas_precision.toFixed(3) : "—"}
+              sub="retrieval ranking quality"
+              icon={ScanSearch}
+              color={
+                (run.avg_ragas_precision ?? 0) >= 0.8 ? EMERALD :
+                (run.avg_ragas_precision ?? 0) >= 0.6 ? AMB : ROSE
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {/* Pass/fail bar */}
       <div className="rounded-xl p-5 flex items-center gap-5"
@@ -774,6 +1135,9 @@ export default function RunDetailPage() {
           </span>
         </div>
       </div>
+
+      {/* Suggestion Panel */}
+      <SuggestionPanel tag={tag} project={project} />
 
       {/* Tabs */}
       <div className="rounded-xl overflow-hidden" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
@@ -797,13 +1161,13 @@ export default function RunDetailPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                    {["#", "Input", "Expected", "Got", "Result", "Latency", ""].map(h => (
+                    {["#", "Input", "Expected", "Got", "Result", "Latency", "Feedback", ""].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
                         style={{ color: MUTED }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>{samples.map(s => <SampleRow key={s.sample_idx} s={s} />)}</tbody>
+                <tbody>{samples.map(s => <SampleRow key={s.sample_idx} s={s} tag={tag} project={project} />)}</tbody>
               </table>
             </div>
           )

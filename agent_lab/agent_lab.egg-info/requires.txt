@@ -11,3 +11,6 @@ python-dotenv>=1.0
 rich>=13.7
 openai>=1.30
 langchain-benchmarks==0.0.14
+ragas>=0.2
+faiss-cpu>=1.7
+langchain-community>=0.2

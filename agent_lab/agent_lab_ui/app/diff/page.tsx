@@ -31,10 +31,18 @@ interface RunInfo {
   version_tag: string; success_rate: number;
   avg_latency_ms: number; avg_cost_usd: number; total_cases: number; timestamp: string;
   notes?: string;
+  avg_ragas_faithfulness?: number | null;
+  avg_ragas_relevancy?: number | null;
+  avg_ragas_precision?: number | null;
 }
 interface DiffData {
   v1: RunInfo; v2: RunInfo;
-  deltas: { success_rate: number; avg_latency_ms: number; avg_cost_usd: number };
+  deltas: {
+    success_rate: number; avg_latency_ms: number; avg_cost_usd: number;
+    avg_ragas_faithfulness?: number | null;
+    avg_ragas_relevancy?: number | null;
+    avg_ragas_precision?: number | null;
+  };
   regressions: any[]; improvements: any[]; llm_summary: string;
 }
 interface DiffLine {
@@ -74,7 +82,8 @@ interface TraceInfo {
 interface TracesResponse { traces: TraceInfo[]; tag: string; found?: number; error?: string; }
 
 // ── Small utilities ───────────────────────────────────────────────────────────
-function DeltaBadge({ value, unit = "", invert = false }: { value: number; unit?: string; invert?: boolean }) {
+function DeltaBadge({ value, unit = "", invert = false }: { value: number | null | undefined; unit?: string; invert?: boolean }) {
+  if (value == null) return <span className="text-xs px-2 py-0.5 rounded-full" style={{ color: MUTED, background: "rgba(155,151,187,0.10)", border: "1px solid rgba(155,151,187,0.20)", fontFamily: MONO }}>—</span>;
   const positive = invert ? value < 0 : value > 0;
   const color    = value === 0 ? MUTED : positive ? EMERALD : ROSE;
   const bg       = value === 0 ? "rgba(155,151,187,0.10)" : positive ? "rgba(74,222,128,0.10)" : "rgba(255,122,150,0.10)";
@@ -105,6 +114,55 @@ function PassBadge({ passed, label }: { passed: boolean; label?: string }) {
 }
 
 // ── Full execution chain (ReAct trace) ───────────────────────────────────────
+// ── Expandable tool output ─────────────────────────────────────────────────────
+function ExpandableToolStep({ step, isLast }: { step: ChainStep; isLast: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const output = step.output ?? "";
+  const PREVIEW = 160;
+  const needsToggle = output.length > PREVIEW;
+
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex flex-col items-center shrink-0" style={{ width: "20px" }}>
+        <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+          style={{ background: "rgba(252,211,77,0.12)", border: "1px solid rgba(252,211,77,0.30)" }}>
+          <Wrench size={9} style={{ color: AMBER }} />
+        </div>
+        {!isLast && <div className="w-px flex-1 mt-0.5" style={{ background: BORDER, minHeight: "12px" }} />}
+      </div>
+      <div className="flex-1 min-w-0 mb-2 rounded-lg px-3 py-2"
+        style={{ background: BG, border: `1px solid ${BORDER}` }}>
+        <div className="flex items-start gap-2 flex-wrap">
+          <span className="text-[10px] font-bold shrink-0" style={{ color: AMBER, fontFamily: MONO }}>
+            {step.name}
+          </span>
+          <span className="text-[10px] flex-1" style={{ color: MUTED, fontFamily: MONO }}>
+            ({step.input})
+          </span>
+        </div>
+        {output && (
+          <div className="mt-1.5">
+            <div className="flex items-start gap-1.5">
+              <ArrowRight size={9} className="mt-0.5 shrink-0" style={{ color: MUTED }} />
+              <span className="text-xs whitespace-pre-wrap break-words" style={{ color: EMERALD, fontFamily: MONO }}>
+                {expanded || !needsToggle ? output : output.slice(0, PREVIEW) + "…"}
+              </span>
+            </div>
+            {needsToggle && (
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className="mt-1 text-[10px] font-semibold ml-4 hover:opacity-80 transition-opacity"
+                style={{ color: PURPLE }}>
+                {expanded ? "▲ show less" : `▼ show all (${output.length} chars)`}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ExecutionChain({ chain, noTraceMsg }: { chain?: ChainStep[]; noTraceMsg?: string }) {
   if (!chain || chain.length === 0) {
     return (
@@ -179,33 +237,7 @@ function ExecutionChain({ chain, noTraceMsg }: { chain?: ChainStep[]; noTraceMsg
 
         // TOOL step
         return (
-          <div key={i} className="flex items-start gap-2">
-            <div className="flex flex-col items-center shrink-0" style={{ width: "20px" }}>
-              <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                style={{ background: "rgba(252,211,77,0.12)", border: "1px solid rgba(252,211,77,0.30)" }}>
-                <Wrench size={9} style={{ color: AMBER }} />
-              </div>
-              {!isLast && <div className="w-px flex-1 mt-0.5" style={{ background: BORDER, minHeight: "12px" }} />}
-            </div>
-
-            <div className="flex-1 min-w-0 mb-2 rounded-lg px-3 py-2"
-              style={{ background: BG, border: `1px solid ${BORDER}` }}>
-              <div className="flex items-start gap-2 flex-wrap">
-                <span className="text-[10px] font-bold shrink-0" style={{ color: AMBER, fontFamily: MONO }}>
-                  {step.name}
-                </span>
-                <span className="text-[10px] flex-1 truncate" style={{ color: MUTED, fontFamily: MONO }}>
-                  ({step.input?.slice(0, 80)}{(step.input?.length ?? 0) > 80 ? "…" : ""})
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-1">
-                <ArrowRight size={9} style={{ color: MUTED }} />
-                <span className="text-xs font-semibold" style={{ color: EMERALD, fontFamily: MONO }}>
-                  {step.output?.slice(0, 120)}{(step.output?.length ?? 0) > 120 ? "…" : ""}
-                </span>
-              </div>
-            </div>
-          </div>
+          <ExpandableToolStep key={i} step={step} isLast={isLast} />
         );
       })}
     </div>
@@ -655,6 +687,29 @@ function MetricsTab({ diff, samples, v1, v2 }: { diff: DiffData; samples: Sample
           v1Val={`$${r1.avg_cost_usd.toFixed(4)}`} v2Val={`$${r2.avg_cost_usd.toFixed(4)}`}
           delta={deltas.avg_cost_usd} unit=" USD" invert />
       </div>
+
+      {/* RAGAS semantic quality block — only shown when both versions have RAGAS scores */}
+      {r1.avg_ragas_faithfulness != null && r2.avg_ragas_faithfulness != null && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: MUTED }}>
+            RAGAS Semantic Quality
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <MetricBlock label="Faithfulness" icon={Activity} iconColor={EMERALD}
+              v1Val={(r1.avg_ragas_faithfulness ?? 0).toFixed(3)}
+              v2Val={(r2.avg_ragas_faithfulness ?? 0).toFixed(3)}
+              delta={deltas.avg_ragas_faithfulness ?? null} unit="" />
+            <MetricBlock label="Answer Relevancy" icon={Activity} iconColor={PURPLE}
+              v1Val={r1.avg_ragas_relevancy != null ? r1.avg_ragas_relevancy.toFixed(3) : "—"}
+              v2Val={r2.avg_ragas_relevancy != null ? r2.avg_ragas_relevancy.toFixed(3) : "—"}
+              delta={deltas.avg_ragas_relevancy ?? null} unit="" />
+            <MetricBlock label="Context Precision" icon={Activity} iconColor={AMBER}
+              v1Val={r1.avg_ragas_precision != null ? r1.avg_ragas_precision.toFixed(3) : "—"}
+              v2Val={r2.avg_ragas_precision != null ? r2.avg_ragas_precision.toFixed(3) : "—"}
+              delta={deltas.avg_ragas_precision ?? null} unit="" />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-3">
         {[

@@ -22,6 +22,7 @@ class EvalConfig:
     dataset_path: Path    # resolved absolute path
     input_key: str        # key for the input field in each JSONL row
     expected_output_key: str  # key for the expected answer
+    match_mode: str = "exact"  # "exact", "contains", or "numeric"
 
 
 def parse_config(config_file: Path) -> EvalConfig:
@@ -46,11 +47,14 @@ def parse_config(config_file: Path) -> EvalConfig:
     # Resolve dataset path relative to the config file's directory
     resolved = (config_file.parent / dataset_path).resolve()
 
+    match_mode: str = raw.get("dataset", {}).get("match_mode", "exact")
+
     return EvalConfig(
         entrypoint=entrypoint,
         dataset_path=resolved,
         input_key=input_key,
         expected_output_key=expected_output_key,
+        match_mode=match_mode,
     )
 
 

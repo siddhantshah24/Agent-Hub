@@ -442,15 +442,74 @@ def _load_agent(entrypoint: str, project_root: Path) -> tuple[Callable, object]:
 # Answer comparison
 # ---------------------------------------------------------------------------
 
-def _answers_match(got: str, expected: str) -> bool:
+def _answers_match(got: str, expected: str, mode: str = "exact") -> bool:
     got_clean = got.strip().lower()
     exp_clean = expected.strip().lower()
+    if mode == "contains":
+        return exp_clean in got_clean
     if got_clean == exp_clean:
         return True
     try:
         return abs(float(got_clean) - float(exp_clean)) < 1e-6
     except (ValueError, TypeError):
         return False
+
+
+def _score_with_ragas(question: str, contexts: list[str], answer: str) -> dict:
+    """
+    Run RAGAS faithfulness, answer relevancy, and context precision on a
+    single (question, contexts, answer) triple. Returns a dict with scores
+    in [0, 1]. Returns empty dict on any import/API failure so the eval loop
+    is never blocked.
+    """
+    try:
+        import asyncio
+        from ragas.metrics import (
+            Faithfulness,
+            ResponseRelevancy,
+            LLMContextPrecisionWithoutReference,
+        )
+        from ragas.metrics.base import MetricWithLLM, MetricWithEmbeddings
+        from ragas.run_config import RunConfig
+        from ragas.llms import LangchainLLMWrapper
+        from ragas.embeddings import LangchainEmbeddingsWrapper
+        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+        from ragas.dataset_schema import SingleTurnSample
+
+        llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini", temperature=0))
+        emb = LangchainEmbeddingsWrapper(OpenAIEmbeddings())
+        metrics = [
+            Faithfulness(),
+            ResponseRelevancy(),
+            LLMContextPrecisionWithoutReference(),
+        ]
+        run_cfg = RunConfig()
+        for m in metrics:
+            if isinstance(m, MetricWithLLM):
+                m.llm = llm
+            if isinstance(m, MetricWithEmbeddings):
+                m.embeddings = emb
+            m.init(run_cfg)
+
+        sample = SingleTurnSample(
+            user_input=question,
+            retrieved_contexts=contexts,
+            response=answer,
+        )
+
+        async def _run():
+            scores = {}
+            for m in metrics:
+                try:
+                    scores[m.name] = float(await m.single_turn_ascore(sample))
+                except Exception:
+                    pass
+            return scores
+
+        return asyncio.run(_run())
+    except Exception as exc:
+        console.print(f"[yellow]RAGAS scoring skipped:[/] {exc}")
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -647,7 +706,7 @@ def run_evaluation(
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
             elapsed_ms = (time.perf_counter() - t0) * 1000
-            passed = _answers_match(got, expected)
+            passed = _answers_match(got, expected, mode=config.match_mode)
             latencies.append(elapsed_ms)
 
             # Capture Langfuse trace ID for direct lookup (avoids name-scan later)
@@ -663,6 +722,26 @@ def run_evaluation(
                 except Exception:
                     pass
 
+            # RAGAS scoring — only when the agent returns retrieved contexts
+            ragas_scores: dict = {}
+            retrieved_contexts = result.get("contexts") if isinstance(result, dict) else None
+            if retrieved_contexts and isinstance(retrieved_contexts, list) and len(retrieved_contexts) > 0:
+                progress.update(task, description=f"⚡ [{idx+1}/{total}] RAGAS scoring…")
+                ragas_scores = _score_with_ragas(question, retrieved_contexts, got)
+                # Push scores to Langfuse as trace-level scores
+                if ragas_scores and trace_id:
+                    try:
+                        from langfuse import get_client as _lf_get_client
+                        _lf = _lf_get_client()
+                        for score_name, score_val in ragas_scores.items():
+                            _lf.create_score(
+                                name=f"ragas_{score_name}",
+                                value=score_val,
+                                trace_id=trace_id,
+                            )
+                    except Exception:
+                        pass
+
             samples.append({
                 "sample_idx": idx,
                 "input": question,
@@ -674,6 +753,9 @@ def run_evaluation(
                 "total_llm_calls": cost_tracker.sample_llm_calls,
                 "total_tool_calls": cost_tracker.sample_tool_calls,
                 "cost_usd": round(cost_tracker.sample_cost_usd, 8),
+                "ragas_faithfulness": ragas_scores.get("faithfulness"),
+                "ragas_relevancy": ragas_scores.get("answer_relevancy"),
+                "ragas_precision": ragas_scores.get("llm_context_precision_without_reference"),
             })
 
             status = "[green]✓[/]" if passed else "[red]✗[/]"
@@ -696,6 +778,15 @@ def run_evaluation(
     avg_latency  = round(sum(latencies) / total, 2) if total else 0.0
     total_cost   = cost_tracker.total_cost_usd
     avg_cost_usd = round(total_cost / total, 6) if total else 0.0
+
+    # Aggregate RAGAS scores (only where scores exist)
+    def _mean_ragas(key: str) -> Optional[float]:
+        vals = [s[key] for s in samples if s.get(key) is not None]
+        return round(sum(vals) / len(vals), 4) if vals else None
+
+    avg_ragas_faithfulness = _mean_ragas("ragas_faithfulness")
+    avg_ragas_relevancy    = _mean_ragas("ragas_relevancy")
+    avg_ragas_precision    = _mean_ragas("ragas_precision")
 
     console.print(
         f"[dim]Token usage — "
@@ -722,6 +813,9 @@ def run_evaluation(
         notes=final_notes,
         total_input_tokens=cost_tracker.total_prompt_tokens,
         total_output_tokens=cost_tracker.total_completion_tokens,
+        avg_ragas_faithfulness=avg_ragas_faithfulness,
+        avg_ragas_relevancy=avg_ragas_relevancy,
+        avg_ragas_precision=avg_ragas_precision,
     )
     insert_samples(db_path, run_id, samples)
 
@@ -736,6 +830,10 @@ def run_evaluation(
     table.add_row("Avg Latency", f"{avg_latency} ms")
     table.add_row("Avg Cost", f"${avg_cost_usd:.6f}")
     table.add_row("Content Hash", content_hash)
+    if avg_ragas_faithfulness is not None:
+        table.add_row("RAGAS Faithfulness",  f"{avg_ragas_faithfulness:.3f}")
+        table.add_row("RAGAS Relevancy",     f"{avg_ragas_relevancy:.3f}" if avg_ragas_relevancy else "—")
+        table.add_row("RAGAS Ctx Precision", f"{avg_ragas_precision:.3f}" if avg_ragas_precision else "—")
     console.print(table)
 
     if final_notes:

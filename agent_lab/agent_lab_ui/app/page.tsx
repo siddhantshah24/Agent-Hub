@@ -22,6 +22,9 @@ interface Run {
   total_cases: number; snapshot_path: string | null;
   content_hash: string | null; timestamp: string;
   notes: string;
+  avg_ragas_faithfulness: number | null;
+  avg_ragas_relevancy: number | null;
+  avg_ragas_precision: number | null;
 }
 interface Project {
   name: string; display_name: string; run_count: number;
@@ -505,7 +508,23 @@ export default function OverviewPage() {
                     <td className="px-6 py-3.5">
                       <NotesCell tag={run.version_tag} initialNotes={run.notes ?? ""} project={selectedProject} />
                     </td>
-                    <td className="px-4 py-3.5 w-52"><PassPill rate={run.success_rate} /></td>
+                    <td className="px-4 py-3.5 w-52">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <PassPill rate={run.success_rate} />
+                        {run.avg_ragas_faithfulness != null && (
+                          <span
+                            className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                            title={`RAGAS Faithfulness: ${run.avg_ragas_faithfulness.toFixed(3)}\nRelevancy: ${(run.avg_ragas_relevancy ?? 0).toFixed(3)}\nPrecision: ${(run.avg_ragas_precision ?? 0).toFixed(3)}`}
+                            style={{
+                              color: run.avg_ragas_faithfulness >= 0.8 ? "#4ADE80" : run.avg_ragas_faithfulness >= 0.6 ? "#F59E0B" : "#FF7A96",
+                              background: run.avg_ragas_faithfulness >= 0.8 ? "rgba(74,222,128,0.10)" : run.avg_ragas_faithfulness >= 0.6 ? "rgba(245,158,11,0.10)" : "rgba(255,122,150,0.10)",
+                              border: `1px solid ${run.avg_ragas_faithfulness >= 0.8 ? "rgba(74,222,128,0.3)" : run.avg_ragas_faithfulness >= 0.6 ? "rgba(245,158,11,0.3)" : "rgba(255,122,150,0.3)"}`,
+                            }}>
+                            F:{run.avg_ragas_faithfulness.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3.5 text-right font-mono text-xs text-slate-400">{run.avg_latency_ms.toFixed(0)} ms</td>
                     <td className="px-4 py-3.5 text-right font-mono text-xs text-slate-400">${run.avg_cost_usd.toFixed(4)}</td>
                     <td className="px-4 py-3.5 text-right text-xs text-slate-500">{run.total_cases}</td>

@@ -34,6 +34,14 @@ _MIGRATIONS = [
     "ALTER TABLE run_samples ADD COLUMN total_llm_calls INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE run_samples ADD COLUMN total_tool_calls INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE run_samples ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
+    # RAGAS per-sample scores
+    "ALTER TABLE run_samples ADD COLUMN ragas_faithfulness REAL DEFAULT NULL",
+    "ALTER TABLE run_samples ADD COLUMN ragas_relevancy    REAL DEFAULT NULL",
+    "ALTER TABLE run_samples ADD COLUMN ragas_precision    REAL DEFAULT NULL",
+    # RAGAS run-level averages
+    "ALTER TABLE runs ADD COLUMN avg_ragas_faithfulness REAL DEFAULT NULL",
+    "ALTER TABLE runs ADD COLUMN avg_ragas_relevancy    REAL DEFAULT NULL",
+    "ALTER TABLE runs ADD COLUMN avg_ragas_precision    REAL DEFAULT NULL",
 ]
 
 
@@ -63,6 +71,16 @@ def init_db(db_path: Path) -> None:
                 passed      INTEGER NOT NULL,   -- 1 = pass, 0 = fail
                 latency_ms  REAL    NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS sample_feedback (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id      INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                sample_idx  INTEGER NOT NULL,
+                score       INTEGER NOT NULL,   -- +1 thumbs up, -1 thumbs down
+                comment     TEXT    NOT NULL DEFAULT '',
+                timestamp   TEXT    NOT NULL,
+                UNIQUE(run_id, sample_idx)
+            );
         """)
         # Apply migrations — skip if column already exists
         for stmt in _MIGRATIONS:
@@ -84,6 +102,9 @@ def insert_run(
     notes: str = "",
     total_input_tokens: int = 0,
     total_output_tokens: int = 0,
+    avg_ragas_faithfulness: Optional[float] = None,
+    avg_ragas_relevancy: Optional[float] = None,
+    avg_ragas_precision: Optional[float] = None,
 ) -> int:
     """Insert an aggregated run record. Returns the new run id."""
     ts = datetime.utcnow().isoformat()
@@ -93,12 +114,14 @@ def insert_run(
             INSERT OR REPLACE INTO runs
                 (version_tag, success_rate, avg_latency_ms, avg_cost_usd,
                  total_cases, snapshot_path, content_hash,
-                 notes, total_input_tokens, total_output_tokens, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 notes, total_input_tokens, total_output_tokens, timestamp,
+                 avg_ragas_faithfulness, avg_ragas_relevancy, avg_ragas_precision)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (version_tag, success_rate, avg_latency_ms, avg_cost_usd,
              total_cases, snapshot_path, content_hash,
-             notes, total_input_tokens, total_output_tokens, ts),
+             notes, total_input_tokens, total_output_tokens, ts,
+             avg_ragas_faithfulness, avg_ragas_relevancy, avg_ragas_precision),
         )
         return cur.lastrowid or 0
 
@@ -148,6 +171,9 @@ def insert_samples(db_path: Path, run_id: int, samples: list[dict]) -> None:
             s.get("total_llm_calls", 0),
             s.get("total_tool_calls", 0),
             s.get("cost_usd", 0.0),
+            s.get("ragas_faithfulness"),
+            s.get("ragas_relevancy"),
+            s.get("ragas_precision"),
         )
         for s in samples
     ]
@@ -156,8 +182,9 @@ def insert_samples(db_path: Path, run_id: int, samples: list[dict]) -> None:
             """
             INSERT INTO run_samples
                 (run_id, sample_idx, input, expected, got, passed, latency_ms,
-                 langfuse_trace_id, total_llm_calls, total_tool_calls, cost_usd)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 langfuse_trace_id, total_llm_calls, total_tool_calls, cost_usd,
+                 ragas_faithfulness, ragas_relevancy, ragas_precision)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -188,6 +215,74 @@ def get_samples_for_tag(db_path: Path, version_tag: str) -> list[dict]:
             SELECT rs.*
             FROM run_samples rs
             JOIN runs r ON rs.run_id = r.id
+            WHERE r.version_tag = ?
+            ORDER BY rs.sample_idx ASC
+            """,
+            (version_tag,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Human feedback
+# ---------------------------------------------------------------------------
+
+def upsert_feedback(
+    db_path: Path,
+    run_id: int,
+    sample_idx: int,
+    score: int,
+    comment: str = "",
+) -> None:
+    """Insert or replace human feedback for a sample (one feedback per sample per run)."""
+    ts = datetime.utcnow().isoformat()
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO sample_feedback (run_id, sample_idx, score, comment, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(run_id, sample_idx) DO UPDATE SET
+                score     = excluded.score,
+                comment   = excluded.comment,
+                timestamp = excluded.timestamp
+            """,
+            (run_id, sample_idx, score, comment, ts),
+        )
+
+
+def get_feedback_for_run(db_path: Path, run_id: int) -> list[dict]:
+    """Return all feedback rows for a given run id."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM sample_feedback WHERE run_id = ? ORDER BY sample_idx ASC",
+            (run_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_feedback_for_export(db_path: Path, version_tag: str) -> list[dict]:
+    """
+    Return a joined record per sample: sample data + feedback (if any).
+    Used for RLHF dataset export.
+    """
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                r.version_tag,
+                r.snapshot_path,
+                rs.sample_idx,
+                rs.input,
+                rs.expected,
+                rs.got,
+                rs.passed,
+                rs.latency_ms,
+                sf.score       AS human_score,
+                sf.comment     AS human_comment
+            FROM run_samples rs
+            JOIN runs r ON rs.run_id = r.id
+            LEFT JOIN sample_feedback sf
+                ON sf.run_id = rs.run_id AND sf.sample_idx = rs.sample_idx
             WHERE r.version_tag = ?
             ORDER BY rs.sample_idx ASC
             """,
