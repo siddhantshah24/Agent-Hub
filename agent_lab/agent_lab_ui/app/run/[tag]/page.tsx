@@ -736,7 +736,7 @@ function SuggestionPanel({ tag, project }: { tag: string; project: string }) {
         <div className="px-5 py-8 flex flex-col items-center gap-2 text-center">
           <Sparkles size={24} style={{ color: `${PURPLE}50` }} />
           <p className="text-sm" style={{ color: MUTED }}>
-            Click <strong className="text-slate-300">Generate Suggestions</strong> to let the OpenAI API analyse
+            Click <strong className="text-slate-300">Generate Suggestions</strong> to let Claude analyse
             the evaluation results and human feedback, then suggest improvements to the system prompt,
             model configuration, or tools.
           </p>

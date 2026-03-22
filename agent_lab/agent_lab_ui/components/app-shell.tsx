@@ -3,8 +3,8 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Github } from "lucide-react";
+import { AgentLabMark } from "@/components/agentlab-mark";
 import { MainNav } from "@/components/main-nav";
-import { VeraMascot } from "@/components/vera";
 
 /** Aligned with docs page peach theme */
 const PEACH = {
@@ -75,25 +75,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }
       >
         <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 sm:gap-5 sm:px-6 sm:py-0">
-          <a href="/" className="group flex min-w-0 shrink-0 items-center gap-2.5">
+          <a
+            href="/"
+            className="group flex min-w-0 shrink-0 items-center gap-2.5"
+            aria-label="AgentLab home"
+          >
             <div
-              className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl transition-all"
+              className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl transition-all group-hover:opacity-95 group-active:scale-[0.98]"
               style={
                 docs
                   ? {
-                      background:
-                        "linear-gradient(145deg, rgba(167,139,250,0.22), rgba(250,246,241,0.9))",
                       boxShadow:
-                        "0 0 0 1px rgba(167,139,250,0.28), 0 6px 18px rgba(28,25,23,0.08)",
+                        "0 0 0 1px rgba(167,139,250,0.35), 0 6px 18px rgba(28,25,23,0.1)",
                     }
                   : {
-                      background: "linear-gradient(145deg, rgba(124,58,237,0.35), #1a1628)",
                       boxShadow:
-                        "0 0 0 1px rgba(167,139,250,0.25), 0 8px 24px rgba(0,0,0,0.35)",
+                        "0 0 0 1px rgba(167,139,250,0.35), 0 8px 22px rgba(0,0,0,0.4)",
                     }
               }
             >
-              <VeraMascot size={34} showFootnote={false} title="AgentLab: home" />
+              <AgentLabMark size={36} className="block" />
             </div>
             <span
               className="text-base font-semibold tracking-tight"
@@ -143,13 +144,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }
         }
       >
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row sm:px-6 sm:py-5">
+        <div className="mx-auto flex max-w-7xl flex-col flex-wrap items-center justify-center gap-3 px-4 py-6 sm:flex-row sm:justify-between sm:px-6 sm:py-5">
           <p
             className="text-center text-xs sm:text-left"
             style={{ color: docs ? PEACH.textMuted : "#A59BC8" }}
           >
             © {new Date().getFullYear()} team SSH.exe
           </p>
+          <a
+            href="https://www.anthropic.com/claude"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-center text-xs font-medium transition-colors sm:text-sm ${
+              docs
+                ? "text-[#b45309] hover:text-[#9a3412]"
+                : "text-[#d97757] hover:text-[#e8a090]"
+            }`}
+          >
+            Powered by Claude
+          </a>
           <a
             href="https://github.com/siddhantshah24/Agent-Hub"
             target="_blank"

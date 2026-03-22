@@ -50,7 +50,7 @@ const sections: DocsSection[] = [
       {
         title: "Install and environment",
         description:
-          "Install AgentLab in the same Python environment as your agent (pip / uv). Set OPENAI_API_KEY for the model your graph uses. If you want execution traces in the dashboard, run Langfuse locally (or use cloud) and set the Langfuse host and keys AgentLab expects in your .env.",
+          "Install AgentLab in the same Python environment as your agent (pip / uv). Set the API key your graph uses (e.g. ANTHROPIC_API_KEY for Claude, or your provider’s env var). If you want execution traces in the dashboard, run Langfuse locally (or use cloud) and set the Langfuse host and keys AgentLab expects in your .env.",
       },
       {
         title: "One repo, one entrypoint",

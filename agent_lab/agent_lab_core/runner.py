@@ -693,6 +693,7 @@ def run_evaluation(
             }
 
             t0 = time.perf_counter()
+            result: dict | object | None = None
             try:
                 result = agent_fn({"question": question}, invoke_config)
                 if isinstance(result, dict):

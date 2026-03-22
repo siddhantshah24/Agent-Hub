@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { VeraHero, VeraMascot } from "@/components/vera";
+import { CLAUDE_ORANGE, CLAUDE_ORANGE_BORDER } from "@/lib/anthropic-brand";
 
 const PURPLE = "#c4b5fd";
 const PURPLE_DIM = "#7c3aed";
@@ -711,7 +712,7 @@ export function LandingPage() {
           <div className="flex min-h-[50vh] w-full flex-col items-start justify-center px-6 py-10 sm:px-10 md:min-h-[calc(100svh-3.5rem)] md:px-12 lg:px-16 xl:px-20">
             {/* Headline */}
             <h1 className="max-w-xl text-[clamp(1.65rem,3.2vw+0.85rem,2.65rem)] font-bold leading-[1.12] tracking-tight text-slate-50 sm:max-w-2xl">
-              No vibe checks,{" "}
+              No vibe checks{" "}
               <span
                 className="inline-block whitespace-nowrap bg-clip-text text-transparent"
                 style={{
@@ -723,6 +724,19 @@ export function LandingPage() {
               </span>
               .
             </h1>
+
+            <a
+              href="https://www.anthropic.com/claude"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-semibold tracking-wide transition-colors hover:bg-[rgba(217,119,87,0.14)] hover:text-[#e8a090]"
+              style={{
+                borderColor: CLAUDE_ORANGE_BORDER,
+                color: CLAUDE_ORANGE,
+              }}
+            >
+              Powered by Claude · Anthropic
+            </a>
 
             {/* Tagline — slightly wider, better breathing room */}
             <p
@@ -1258,7 +1272,7 @@ export function LandingPage() {
               <span style={{ color: PURPLE }}>prompt</span>
               {"      "}→{"  "}system instructions &amp; persona{"\n"}
               <span style={{ color: PURPLE }}>model</span>
-              {"       "}→{"  "}gpt-4o, gpt-4o-mini, claude…{"\n"}
+              {"       "}→{"  "}Claude 4, Claude 3.5 Sonnet, Opus…{"\n"}
               <span style={{ color: PURPLE }}>tools</span>
               {"       "}→{"  "}web_search, calculator, RAG…{"\n"}
               <span style={{ color: EMERALD }}>temperature</span>
@@ -1499,9 +1513,26 @@ export function LandingPage() {
             </pre>
           </div>
 
-          <p className="mt-8 text-[12px]" style={{ color: MUTED }}>
-            AgentLab &mdash; VERA &mdash; HackASU 2026 &mdash; Claude Builder
-            Club &mdash; March 20&ndash;22, 2026
+          <p className="mt-8 space-y-2 text-[12px] leading-relaxed" style={{ color: MUTED }}>
+            <span className="block">
+              <a
+                href="https://www.anthropic.com/claude"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold underline underline-offset-2 transition-colors hover:text-[#e8a090]"
+                style={{
+                  color: CLAUDE_ORANGE,
+                  textDecorationColor: CLAUDE_ORANGE_BORDER,
+                }}
+              >
+                Powered by Claude
+              </a>
+              <span className="text-slate-500"> · Anthropic</span>
+            </span>
+            <span className="block">
+              AgentLab &mdash; VERA &mdash; HackASU 2026 &mdash; Claude Builder
+              Club &mdash; March 20&ndash;22, 2026
+            </span>
           </p>
         </div>
       </section>

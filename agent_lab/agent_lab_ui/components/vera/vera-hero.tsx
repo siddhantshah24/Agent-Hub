@@ -26,11 +26,19 @@ export function VeraHero() {
       </div>
 
       {/* Caption pinned just above the fold bottom */}
-      <div className="relative z-[1] shrink-0 py-5 text-center">
+      <div className="relative z-[1] shrink-0 space-y-2 py-5 text-center">
         <p className="text-sm tracking-tight sm:text-base">
           <span className="font-bold text-white">VERA</span>{" "}
           <span className="font-medium" style={{ color: "#a78bfa" }}>Your friendly versioning guide</span>
         </p>
+        <a
+          href="https://www.anthropic.com/claude"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-[11px] font-semibold tracking-wide text-[#d97757] underline underline-offset-2 decoration-[rgba(217,119,87,0.55)] transition-colors hover:text-[#e8a090] hover:decoration-[rgba(232,160,144,0.75)]"
+        >
+          Powered by Claude
+        </a>
       </div>
     </div>
   );
