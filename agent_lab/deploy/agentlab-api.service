@@ -1,0 +1,19 @@
+# Template — remote-bootstrap.sh writes the real file with expanded paths.
+# User: ec2-user, APP_ROOT default ~/agentlab
+
+[Unit]
+Description=Agent Lab FastAPI API
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/agentlab/agent_lab
+EnvironmentFile=-/home/ec2-user/agentlab/.env
+Environment=AGENTLAB_PROJECTS_ROOT=/home/ec2-user/agentlab/target_projects
+ExecStart=/home/ec2-user/agentlab/agent_lab/.venv/bin/python -m uvicorn agent_lab_core.server:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

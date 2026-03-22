@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
 import "./globals.css";
@@ -34,7 +35,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontFamily: "var(--font-inter), sans-serif",
         }}
       >
-        <AppShell>{children}</AppShell>
+        <AppShell>
+          <Suspense
+            fallback={
+              <div className="flex min-h-[40vh] items-center justify-center text-slate-500 text-sm">
+                Loading…
+              </div>
+            }
+          >
+            {children}
+          </Suspense>
+        </AppShell>
       </body>
     </html>
   );
