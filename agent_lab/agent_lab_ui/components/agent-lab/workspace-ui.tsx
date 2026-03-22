@@ -5,7 +5,13 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ChevronDown, Code2, Database, X } from "lucide-react";
 
-export const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+/**
+ * Always use same-origin `/api/*` in the browser. Next.js rewrites those to FastAPI
+ * (`AGENTLAB_BACKEND_URL` on Vercel). This fixes custom domains: a baked
+ * `NEXT_PUBLIC_API_URL` pointing at `*.vercel.app` breaks fetches from `agent-hub-one-gilt.vercel.app`.
+ * Local dev: `next dev` rewrites `/api` → `http://localhost:8000` (see next.config).
+ */
+export const API = "";
 
 export const PURPLE = "#A78BFA";
 export const CYAN = "#22D3EE";

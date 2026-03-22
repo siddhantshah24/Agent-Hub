@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import { API } from "@/components/agent-lab/workspace-ui";
 import {
   Sparkles, ArrowLeft, GitCompare, Code2, BarChart3,
   List, CheckCircle2, XCircle, TrendingUp, TrendingDown,
@@ -10,8 +11,6 @@ import {
   MessageSquare, Hash, Clock, AlertCircle, Loader2, Cpu,
 } from "lucide-react";
 import { VeraMascot } from "@/components/vera";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Palette (lighter, readable) ──────────────────────────────────────────────
 const BG      = "#1a1628";

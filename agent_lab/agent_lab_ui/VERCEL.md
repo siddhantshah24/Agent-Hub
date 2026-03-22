@@ -22,20 +22,17 @@ Set **Root Directory** to:
 
 Use your **current** EC2 public IP and port if different. **No trailing slash.**
 
-**Do not** set `NEXT_PUBLIC_API_URL` on Vercel unless you use a **custom domain** and builds need a fixed public origin (see below).
+The UI calls **same-origin** `/api/...` only (no baked `NEXT_PUBLIC_API_URL`), so **custom domains** (e.g. `agent-hub-one-gilt.vercel.app`) work without extra env.
 
 ### How it works
 
-- On Vercel, the app calls `https://<your-deployment>.vercel.app/api/...`.
-- Next.js **rewrites** those requests to `AGENTLAB_BACKEND_URL/api/...` (your EC2 FastAPI).
-- The browser never talks to `http://` EC2 directly, so you avoid **mixed content** blocks.
+- The browser requests `https://<your-domain>/api/...` on the **same host** you opened.
+- Next.js **rewrites** those to `AGENTLAB_BACKEND_URL/api/...` (EC2 FastAPI).
+- Avoids mixed content and avoids calling the wrong `*.vercel.app` host from a custom domain.
 
-### Custom domain (e.g. `app.example.com`)
+### Custom domain
 
-Set:
-
-- `NEXT_PUBLIC_API_URL` = `https://app.example.com`  
-- Keep `AGENTLAB_BACKEND_URL` = `http://YOUR_EC2:8000`
+Only ensure **`AGENTLAB_BACKEND_URL`** is set. No `NEXT_PUBLIC_API_URL` required.
 
 ## 5. Deploy
 

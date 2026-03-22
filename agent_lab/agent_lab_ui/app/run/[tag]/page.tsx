@@ -14,8 +14,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { VeraMascot } from "@/components/vera";
 import { AgentSnapshotView, type AgentSnapshotData } from "@/components/agent-lab/agent-snapshot-view";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API } from "@/components/agent-lab/workspace-ui";
 
 const PURPLE  = "#A78BFA";
 const EMERALD = "#4ADE80";
