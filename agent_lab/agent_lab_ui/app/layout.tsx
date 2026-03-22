@@ -31,7 +31,7 @@ const BDR  = "#3D3860";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" style={{ backgroundColor: BG }}>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} flex min-h-screen flex-col overflow-x-hidden antialiased`}
         style={{ backgroundColor: BG, color: "#EDE9F8", fontFamily: "var(--font-inter), sans-serif" }}
@@ -74,7 +74,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-6 py-8">{children}</main>
+        <main className="relative z-10 mx-auto min-w-0 w-full max-w-7xl flex-1 overflow-x-hidden px-6 py-8">
+          {children}
+        </main>
 
         <footer
           className="relative z-10 mt-auto border-t"
