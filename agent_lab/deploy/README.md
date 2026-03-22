@@ -25,6 +25,42 @@ aws ec2 authorize-security-group-ingress --region us-east-1 \
   --group-id sg-07266c734f756b97d --protocol tcp --port 8000 --cidr 0.0.0.0/0
 ```
 
+## 2a. Deploy with AWS CLI (resolve IP automatically)
+
+If `aws` is configured (`aws sts get-caller-identity` works), you can avoid hard-coding the public IP:
+
+```bash
+cd /path/to/workspace   # contains agent_lab/ and target_projects/
+
+export AWS_PROFILE=keysha   # optional
+export AWS_REGION=us-east-1
+export SSH_KEY="$HOME/path/to/agl.pem"
+export AGENTLAB_EC2_INSTANCE_ID="i-xxxxxxxx"   # EC2 console → Instances → ID
+
+# Sync code + DBs + snapshots + .env (same as sync-to-ec2.sh)
+chmod +x agent_lab/deploy/deploy-via-aws.sh
+./agent_lab/deploy/deploy-via-aws.sh
+
+# First time on a fresh instance (Python venv, systemd unit):
+./agent_lab/deploy/deploy-via-aws.sh --bootstrap
+
+# Routine code push: sync + restart API
+./agent_lab/deploy/deploy-via-aws.sh --restart
+```
+
+**Or** match by **Name** tag or **public IP** (no instance id needed):
+
+```bash
+export AGENTLAB_EC2_NAME_TAG="agentlab-api"   # must equal the instance Name tag
+unset AGENTLAB_EC2_INSTANCE_ID
+./agent_lab/deploy/deploy-via-aws.sh --restart
+```
+
+```bash
+export AGENTLAB_EC2_PUBLIC_IP="54.196.166.55"
+./agent_lab/deploy/deploy-via-aws.sh --restart
+```
+
 ## 2. Sync code + env from your Mac
 
 From the **workspace root** (folder that contains `agent_lab/` and `target_projects/`):
