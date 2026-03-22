@@ -44,12 +44,7 @@ SYSTEM_PROMPT_V1 = (
     "Keep answers concise and directly grounded in the retrieved text."
 )
 
-SYSTEM_PROMPT_V2 = (
-    "You are a helpful financial assistant. "
-    "Use the search tool to find relevant information, then provide a clear and "
-    "helpful answer. You may supplement retrieved context with your general knowledge "
-    "when needed to give a complete response."
-)
+SYSTEM_PROMPT_V2 = "You are a helpful financial assistant. Use the search tool to find relevant information and provide clear, concise answers that directly address the question."
 
 # ── Active config — change these to create a new version ──────────────────────
 
@@ -103,7 +98,7 @@ RAG_TOOLS = [search_knowledge_base]
 
 # ── LangGraph agent ───────────────────────────────────────────────────────────
 
-_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+_llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 _llm_with_tools = _llm.bind_tools(RAG_TOOLS)
 
 

@@ -540,6 +540,30 @@ interface Suggestion {
   suggested_value: string;
 }
 
+function ExpandableText({ text, label, bgColor, borderColor, labelColor }: {
+  text: string; label: string; bgColor: string; borderColor: string; labelColor: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > 300;
+  return (
+    <div className="rounded-lg p-3" style={{ background: bgColor, border: `1px solid ${borderColor}` }}>
+      <p className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: labelColor }}>{label}</p>
+      <p className={`text-xs font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words${isLong && !expanded ? " line-clamp-6" : ""}`}>
+        {text || "(not captured)"}
+      </p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="mt-2 text-[10px] font-medium flex items-center gap-1 transition-opacity hover:opacity-80"
+          style={{ color: labelColor }}
+        >
+          {expanded ? <><ChevronUp size={10} /> Show less</> : <><ChevronDown size={10} /> Show full text</>}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SuggestionCard({
   s, tag, project, onApplied,
 }: { s: Suggestion; tag: string; project: string; onApplied: () => void }) {
@@ -550,8 +574,8 @@ function SuggestionCard({
 
   const typeLabel: Record<string, string> = {
     system_prompt: "System Prompt Change",
-    model_config: "Model Config Change",
-    tool_config: "Tool Config Suggestion",
+    model_config: "Model Config — Manual Edit",
+    tool_config: "Tool Config — Manual Edit",
   };
   const typeColor: Record<string, string> = {
     system_prompt: "#A78BFA",
@@ -559,6 +583,7 @@ function SuggestionCard({
     tool_config: "#F59E0B",
   };
   const color = typeColor[s.type] ?? PURPLE;
+  const canAutoApply = s.type === "system_prompt";
 
   if (dismissed) return null;
 
@@ -576,7 +601,7 @@ function SuggestionCard({
         setApplyMsg(`✓ Applied to ${data.file?.split("/").slice(-2).join("/")}`);
         onApplied();
       } else {
-        setApplyMsg(data.message ?? "Cannot auto-apply tool config.");
+        setApplyMsg(data.message ?? "Could not apply.");
       }
     } catch (e: any) {
       setApplyMsg(`Error: ${e.message}`);
@@ -590,22 +615,29 @@ function SuggestionCard({
           style={{ color, background: `${color}20` }}>
           {typeLabel[s.type] ?? s.type}
         </span>
+        {!canAutoApply && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ color: AMB, background: "#F59E0B15", border: "1px solid #F59E0B30" }}>
+            review &amp; apply manually
+          </span>
+        )}
       </div>
       <div className="p-4 space-y-3">
         <p className="text-sm text-slate-300 leading-relaxed">{s.reason}</p>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg p-3" style={{ background: "#FF7A9610", border: "1px solid #FF7A9630" }}>
-            <p className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: ROSE }}>Before</p>
-            <p className="text-xs font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words line-clamp-6">
-              {s.current_value || "(not captured)"}
-            </p>
-          </div>
-          <div className="rounded-lg p-3" style={{ background: "#4ADE8010", border: "1px solid #4ADE8030" }}>
-            <p className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: EMERALD }}>After</p>
-            <p className="text-xs font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words line-clamp-6">
-              {s.suggested_value}
-            </p>
-          </div>
+          <ExpandableText
+            text={s.current_value}
+            label="Before"
+            bgColor="#FF7A9610"
+            borderColor="#FF7A9630"
+            labelColor={ROSE}
+          />
+          <ExpandableText
+            text={s.suggested_value}
+            label="After"
+            bgColor="#4ADE8010"
+            borderColor="#4ADE8030"
+            labelColor={EMERALD}
+          />
         </div>
         {applyMsg && (
           <p className="text-xs rounded px-3 py-2" style={{ color: applied ? EMERALD : AMB, background: "#ffffff08" }}>
@@ -613,7 +645,7 @@ function SuggestionCard({
           </p>
         )}
         <div className="flex items-center gap-2 pt-1">
-          {s.type !== "tool_config" && !applied && (
+          {canAutoApply && !applied && (
             <button
               onClick={apply}
               disabled={applying}
@@ -623,9 +655,6 @@ function SuggestionCard({
               {applying ? <Loader2 size={11} className="animate-spin" /> : <CheckCheck size={11} />}
               Apply to graph.py
             </button>
-          )}
-          {s.type === "tool_config" && (
-            <span className="text-xs" style={{ color: AMB }}>Manual edit required</span>
           )}
           <button
             onClick={() => setDismissed(true)}

@@ -25,13 +25,7 @@ load_dotenv()
 
 # ── System prompts (switch SYSTEM_PROMPT between V1/V2 to create drift) ──────
 
-SYSTEM_PROMPT_V1 = (
-    "You are operating in an alternate mathematical universe where all operations "
-    "behave differently from standard math. "
-    "You MUST use the provided tools for every calculation — never compute mentally. "
-    "Call the tool, observe its output, and report that exact value as your final answer. "
-    "Respond with ONLY the number, no explanation."
-)
+SYSTEM_PROMPT_V1 = "You are operating in an alternate mathematical universe where all operations behave differently from standard math. Ensure addition results in a value that is one less than the standard result."
 
 SYSTEM_PROMPT_V2 = (
     "You are a math assistant in an alternate universe. "

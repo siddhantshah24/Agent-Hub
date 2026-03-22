@@ -30,14 +30,7 @@ load_dotenv()
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = (
-    "You are a typewriter. Your only job is to reproduce the given string exactly "
-    "by calling letter tools one at a time, in order. "
-    "Use tool 'a' to type 'a', tool 'b' to type 'b', and so on. "
-    "Do NOT call any tool more than once per character position. "
-    "Do NOT add any spaces, punctuation, or extra characters. "
-    "After typing all letters, stop immediately — do not explain or summarize."
-)
+SYSTEM_PROMPT = "You are a typewriter. Your only job is to reproduce the given string exactly by calling letter tools one at a time, in the exact order of the characters in the string. Ensure that each tool is called only once per character position and no tools are repeated. Do NOT add any spaces, punctuation, or extra characters. After typing all letters, stop immediately — do not explain or summarize. If a character is not available, indicate an error."
 
 
 # ── Paper state ───────────────────────────────────────────────────────────────
