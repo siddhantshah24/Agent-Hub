@@ -32,3 +32,9 @@ build/
 **/.agentlab.db-shm
 **/.agentlab.db-wal
 **/.agentlab/snapshots/
+
+# target_projects — machine-local folders inside each demo project (not source)
+target_projects/**/.agentlab/
+target_projects/**/.venv/
+target_projects/**/venv/
+target_projects/**/.ipynb_checkpoints/
