@@ -1,39 +1,92 @@
-# Agent Lab Setup and Test Guide
+# AgentLab setup guide
 
-This guide is written for a first-time user who wants to run Agent Lab locally and test one or more target projects end to end.
+This guide helps you install AgentLab, configure environment variables, run evaluations on a **target project**, and start the **API + dashboard**. It covers **two paths**.
 
-## What you are setting up
+1. **[Local running](#local-running)** — Install on your machine, run evals and the UI locally (full development and private data on your box).
+2. **[Hosted deployment and usage](#hosted-deployment-and-usage)** — Deploy the stack for a team or demo, or **use** an instance that is already deployed.
 
-Agent Lab has three parts:
+For product context, see **[README.md](README.md)**.
 
-1. Python CLI (`agentlab`) for eval/versioning/rollback
-2. FastAPI backend for project/run APIs
-3. Next.js dashboard UI for comparison and traces
+---
 
-The target projects live in `target_projects/` and each has its own:
+## What you are installing
 
-- `agent-eval.yml`
-- `src/` agent code
-- `datasets/` dataset
-- `.agentlab.db` run history (local runtime artifact)
+AgentLab has three runtime parts:
+
+1. **Python CLI** (`agentlab`) — evals, snapshots, rollback
+2. **FastAPI backend** — projects, runs, diff APIs (LLM-backed summaries when a key is configured)
+3. **Next.js UI** — dashboard, diff viewer, run pages, docs landing (optional **Spline** scene in the hero; bundled via npm)
+
+Target agents live under `target_projects/`. Each project has its own:
+
+- `agent-eval.yml`  
+- `src/` (agent graph code)  
+- `datasets/`  
+- Local`.agentlab.db` and `.agentlab/snapshots/` created when you run evals
+
+---
 
 ## Prerequisites
 
-- Python `3.10+`
-- Node.js `18+` and npm
-- Docker running (for local Langfuse)
-- API keys:
-  - Groq key (default demos are Groq-backed)
-  - Langfuse public + secret keys
 
-## Step 1: Clone and enter the repo
+| Requirement                 | Notes                                        |
+| --------------------------- | -------------------------------------------- |
+| **Python 3.10+**            | Used for CLI and API                         |
+| **Node.js 18+** and **npm** | For `agent_lab_ui`                           |
+| **Docker**                  | Recommended for **local Langfuse** (tracing) |
+| **Git**                     | Clone this repository                        |
+
+
+### API keys and services
+
+Configure these in `.env` (see below). `.env.example` lists the exact variable names; names may match your **LLM provider** for chat completions used by the API (diff summaries and suggestions).
+
+
+| Variable                                                      | Purpose                                                                                                                                                                                            |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LLM_API_KEY`                                                 | Required for Diff Viewer behavioral summaries and improvement suggestions (FastAPI). In`.env.example` this appears under the key used by the bundled server for the configured chat **LLM model**. |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | Recommended for trace URLs and observability during evals.                                                                                                                                         |
+
+
+Copy from the template:
 
 ```bash
-git clone git@github.com:siddhantshah24/Agent-Hub.git
-cd Agent-Hub
+cp .env.example .env
 ```
 
-## Step 2: Start Langfuse locally
+Edit `.env` and set real values. Start from `.env.example`, which names the **LLM** key and optional model override for summaries and suggestions, plus any tracing keys you use.
+
+```env
+# Paste from .env.example after copying — includes the LLM API key line for the server
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=http://localhost:3000
+```
+
+Optional model override for those API calls (if supported by your provider) is documented in `**.env.example**`.
+
+---
+
+# Local running
+
+Follow this path to clone the repo, install dependencies, and run **everything on your computer**.
+
+---
+
+## Step 1: Clone and enter the repository
+
+```bash
+git clone <your-fork-or-repo-url>
+cd AgentHub
+```
+
+(Replace the URL with your team’s Git remote.)
+
+---
+
+## Step 2: Langfuse (local, recommended)
+
+Tracing integrates with **Langfuse** when keys and `LANGFUSE_HOST` are set.
 
 ```bash
 git clone https://github.com/langfuse/langfuse.git langfuse-local
@@ -41,117 +94,115 @@ cd langfuse-local
 docker compose up -d
 ```
 
-Then open `http://localhost:3000`, create a local account, and generate API keys.
+Open `http://localhost:3000`, create an account, create a project, and generate **public** and **secret** API keys. Put them in `.env` as `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`, and set `LANGFUSE_HOST=http://localhost:3000`.
 
-Return to this repo after that.
+Return to the AgentHub repo root for the remaining steps.
 
-## Step 3: Create and activate Python environment
+---
+
+## Step 3: Python environment
 
 ```bash
-cd /path/to/Agent-Hub
+cd /path/to/AgentHub
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 python -m pip install --upgrade pip
 ```
 
-## Step 4: Install backend and UI dependencies
+---
+
+## Step 4: Install AgentLab (editable) and UI dependencies
 
 ```bash
 pip install -e agent_lab/
-pip install langchain-openai
+```
 
+Install the dashboard:
+
+```bash
 cd agent_lab/agent_lab_ui
 npm install
 cd ../..
 ```
 
-## Step 5: Configure environment variables
+The UI includes `@splinetool/react-spline` and related packages for the landing hero; **no extra manual step** is required beyond `npm install`.
 
-Copy and edit the example:
+---
+
+## Step 5: Environment file
 
 ```bash
 cp .env.example .env
 ```
 
-Set at least:
+- Set the **LLM API key** (and optional model name) so diff summaries and suggestions work in the UI. Use the variable names in`.env.example`.  
+- Set **Langfuse** variables if you use local Langfuse.
 
-```env
-GROQ_API_KEY=gsk-...
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=http://localhost:3000
-```
+---
 
-`LANGFUSE_HOST` is the variable read by the code.
-
-### OpenAI usage notes (optional provider swap)
-
-The current demo projects use `ChatGroq` in their `src/graph.py`.
-
-If you want to run with OpenAI instead:
-
-- Add `OPENAI_API_KEY=sk-...` to `.env`
-- Replace `ChatGroq(...)` with `ChatOpenAI(...)` in the target project's `src/graph.py`
-- Ensure `langchain-openai` is installed (it is already in `agent_lab/pyproject.toml`)
-
-This keeps Agent Lab behavior the same, only the model provider changes.
-
-## Step 6: Verify CLI installation
+## Step 6: Verify the CLI
 
 ```bash
 agentlab --help
 ```
 
-Expected commands: `init`, `eval`, `rollback`, `ui`.
+You should see commands: `init`,`eval`,`rollback`,`ui`.
 
-## Step 7: Run a first smoke evaluation
+---
 
-Use math project first:
+## Step 7: Run a smoke evaluation
 
 ```bash
 cd target_projects/01_math_multiverse
 agentlab eval --limit 3
 ```
 
-Expected:
+Expect:
 
-- Progress bar completes
-- Results table appears
-- Snapshot created at `.agentlab/snapshots/<tag>/`
+- Progress output and a results summary  
+- A snapshot under`.agentlab/snapshots/` for the run tag
 
-## Step 8: Run full evaluation and create two versions
+**Version tags.** Each `agentlab eval` run is stored under a **version tag**. If you **do not** pass `--tag`, AgentLab **generates a tag automatically** (from a content hash, e.g. `run-001-…`). If you **do** pass `--tag v1` (or any label), that **name** is used so you can line up releases, prompts, or experiments yourself.
+
+---
+
+## Step 8: Create two tags (for compare / diff)
 
 ```bash
 cd target_projects/01_math_multiverse
 agentlab eval --tag v1
 ```
 
-Now edit `src/graph.py` (for example switch active prompt), then:
+Make a small, intentional change in`src/graph.py` (e.g. prompt text), then:
 
 ```bash
 agentlab eval --tag v2
 ```
 
-## Step 9: Start dashboard and API
+---
 
-From repo root or from a target project directory:
+## Step 9: Start API and dashboard
+
+From **repository root** (or from a target project directory):
 
 ```bash
 agentlab ui
 ```
 
-Default:
+Defaults:
 
-- API: `http://localhost:8000`
-- Dashboard: `http://localhost:3001`
+- **API:** `http://localhost:8000`  
+- **Dashboard:** `http://localhost:3001`
 
-If port `8000` is occupied:
+Custom ports:
 
 ```bash
 agentlab ui --api-port 8001 --ui-port 3002
 ```
 
-## Step 10: Validate API endpoints
+---
+
+## Step 10: Quick API checks
 
 ```bash
 curl http://localhost:8000/health
@@ -159,37 +210,43 @@ curl http://localhost:8000/api/projects
 curl "http://localhost:8000/api/versions?project=01_math_multiverse"
 ```
 
-The health endpoint should return `{"status":"ok"}`.
+`/health` should return JSON with a healthy status.
 
-## Step 11: Validate dashboard behavior
+---
 
-Open the dashboard and verify:
+## Step 11: Dashboard checks
 
-1. project dropdown loads
-2. run history table loads (not stuck on loading)
-3. compare (`v1` vs `v2`) opens diff view
-4. metrics/code diff/sample compare render
-5. run details page opens and shows traces/snapshot
+In the browser:
 
-## Running other target projects
+1. Open the dashboard URL printed by `agentlab ui`.
+2. Confirm the **project** selector lists your target project.
+3. Open **run history** and confirm **v1** / **v2** (or your tags) appear.
+4. Open **Diff** (or diff viewer) and compare two tags; confirm **metrics** and **summary** if your **LLM** key is set.
+5. Open a **run detail** page for a tag and confirm samples (and traces if Langfuse is wired).
 
-### Enterprise SQL
+---
+
+## Other target projects (local)
+
+**Enterprise SQL**
 
 ```bash
 cd target_projects/02_enterprise_sql
 agentlab eval --tag sql-v1
 ```
 
-### Stress Typewriter
+**Stress typewriter**
 
 ```bash
 cd target_projects/03_stress_typewriter
 agentlab eval --tag typew-v1
 ```
 
-Then use `agentlab ui` to compare runs per project from the dropdown.
+Use the dashboard **project** dropdown to switch context between projects.
 
-## Rollback workflow
+---
+
+## Rollback workflow (local)
 
 ```bash
 cd target_projects/01_math_multiverse
@@ -197,34 +254,127 @@ agentlab rollback --tag v1
 agentlab eval --tag rollback-check
 ```
 
-## Common troubleshooting
+Use this to restore tracked files from a snapshot for a given tag (per project configuration).
+
+---
+
+# Hosted deployment and usage
+
+Use this when the stack runs on a **server** or when you **only need to use** a deployment someone else hosts.
+
+---
+
+## Deploying the API and UI
+
+Use this when you deploy AgentLab to a **public URL** (demo, hackathon judging, team server). The dashboard and API are **separate processes**; production usually mirrors that (static or Node hosting for the UI, Python hosting for the API).
+
+### FastAPI backend
+
+Run the ASGI app with a production server. With the virtualenv active and`pip install -e agent_lab/` done from the repo root:
+
+```bash
+cd agent_lab
+uvicorn agent_lab_core.server:app --host 0.0.0.0 --port 8000
+```
+
+(`agentlab ui` starts the same app with cwd set to `agent_lab/`; match that layout or rely on installed package + env vars.)
+
+Set **environment variables** on the API host (same meaning as `.env` locally):
+
+
+| Variable                                                      | Purpose                                                                                                                                                                                |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| LLM key for summaries                                         | Same role as locally. Match `.env.example` for the variable name tied to your **LLM model** provider.                                                                                  |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | Traces (use cloud Langfuse or your own instance)                                                                                                                                       |
+| `AGENTLAB_PROJECTS_ROOT`                                      | **Recommended for multi-project demos:** absolute path to a directory whose children are project folders (each may contain `.agentlab.db`). Same layout as `target_projects/` on disk. |
+| `AGENTLAB_DB`                                                 | **Single-project mode:** path to one SQLite file if you are not using `AGENTLAB_PROJECTS_ROOT`.                                                                                        |
+
+
+The API must **read** the same SQLite files that were populated by `agentlab eval` (copy the repo tree or sync `target_projects/**/.agentlab.db` to the server). Evals and rollback still run **on a machine with the CLI**; the hosted API serves the dashboard.
+
+### Next.js frontend
+
+Build the UI with`NEXT_PUBLIC_API_URL` pointing at your **public API origin** (scheme + host + port, **no trailing slash**). Example:
+
+```bash
+cd agent_lab/agent_lab_ui
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com npm run build
+npm run start
+```
+
+`next.config.ts` rewrites browser requests from `/api/*` to `${NEXT_PUBLIC_API_URL}/api/*`, so the UI and API can live on different domains.
+
+### Security and operations
+
+- Serve **HTTPS** for both UI and API in production.  
+- Keep **LLM** and Langfuse secrets on the **server**; never commit them.  
+- The API currently allows **CORS `*`** for easier local development. For a locked-down deployment, restrict `allow_origins` in `agent_lab_core/server.py` to your dashboard origin only.  
+- Ensure the host running **evaluations** (if not the same as the API) can still write `.agentlab.db` files that the API can read, or use a shared volume / sync process.
+
+### Hosting checklist
+
+- API reachable at a stable URL; `curl https://…/health` works  
+- `AGENTLAB_PROJECTS_ROOT` or `AGENTLAB_DB` points at real data on that host  
+- UI built with `NEXT_PUBLIC_API_URL` matching the API  
+- Secrets configured on the API process  
+- Browser can load the dashboard and project/run data without CORS or mixed-content errors
+
+---
+
+## Using a hosted project (no local clone required for browsing)
+
+If your team already **deployed** the dashboard and API:
+
+1. Open the **dashboard URL** they give you (usually HTTPS).
+2. You do **not** need a local clone **only to view** runs, diffs, and feedback, as long as the server already has eval data in its SQLite databases.
+3. If you **build** the UI from source against a remote API, set`NEXT_PUBLIC_API_URL` at **build time** to the **public base URL of the FastAPI** service (no trailing slash), then deploy the built assets.
+4. **Running new evals** still requires the **CLI** on a machine that has the target project and keys, unless you automate that elsewhere. Point`AGENTLAB_PROJECTS_ROOT` on the server at the tree that contains those `.agentlab.db` files so the hosted UI lists the right projects.
+
+High-level context: **[README.md](README.md)**.
+
+---
+
+## Troubleshooting
 
 ### `agentlab: command not found`
 
-Activate the same virtualenv where you installed `agent-lab`.
+Activate the same **virtualenv** where you ran `pip install -e agent_lab/`.
 
-### UI stuck on "Loading runs..."
+### UI stuck on loading or “API unreachable”
 
-Usually API did not start (port conflict). Start on different ports:
+- Confirm`agentlab ui` is running and no firewall is blocking localhost.  
+- Try alternate ports: `agentlab ui --api-port 8001 --ui-port 3002` and open the printed UI URL.  
+- For a **hosted** UI, confirm `NEXT_PUBLIC_API_URL` matched the API when you built the frontend.
 
-```bash
-agentlab ui --api-port 8001 --ui-port 3002
-```
+### “LLM summary unavailable” or empty suggestions (Diff Viewer)
+
+- Set a valid **LLM API key** in`.env`(per `.env.example`**) and restart `agentlab ui`** or the API process.  
+- Check server logs for errors from the LLM client.
 
 ### Langfuse traces missing
 
-- Check keys in `.env`
-- Ensure `LANGFUSE_HOST` points to running Langfuse
-- Confirm eval output says tracing is active
+- Confirm `LANGFUSE_HOST` matches your Langfuse base URL.  
+- Verify **public/secret** keys and that Docker Langfuse is running.  
+- Re-run an eval after fixing env vars.
 
-### AI summary unavailable
+### Spline / 3D hero does not load on the landing page
 
-Set valid `GROQ_API_KEY` (or update server implementation if you want summary from OpenAI instead).
+- Ensure`npm install` completed in`agent_lab/agent_lab_ui`.  
+- Check the browser console for blocked network requests to **Spline** CDN; allow **prod.spline.design** if you use a strict network policy.
 
-### `ModuleNotFoundError: langchain_groq`
+### Port already in use
 
-Install dependency:
+Pass explicit ports to `agentlab ui` (see Step 9).
 
-```bash
-pip install langchain-groq
-```
+---
+
+## Summary checklist (local)
+
+- Python venv active; `pip install -e agent_lab/`  
+- `npm install` in `agent_lab/agent_lab_ui`  
+- `.env` copied from `.env.example`; **LLM** key set per`.env.example` 
+- Langfuse running (optional) and keys in `.env`  
+- `agentlab eval` succeeds in at least one `target_projects/`*  
+- `agentlab ui` serves API and dashboard; health and projects endpoints respond
+
+You are ready to use AgentLab locally. Deeper product narrative is in **[README.md](README.md)**.
