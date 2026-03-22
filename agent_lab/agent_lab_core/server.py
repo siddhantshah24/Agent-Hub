@@ -28,6 +28,33 @@ from .db import (
 )
 from .langfuse_util import get_langfuse_trace_api_client, sync_langfuse_env_for_client
 
+
+def _load_agentlab_dotenv() -> None:
+    """Load `.env` from repo root / agent_lab so uvicorn cwd does not matter (traces need LANGFUSE_*)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parent.parent / ".env",  # agent_lab/.env
+        Path(__file__).resolve().parent.parent.parent / ".env",  # workspace root/.env
+    ]
+    seen: set[str] = set()
+    for p in candidates:
+        try:
+            key = str(p.resolve())
+        except OSError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        if p.is_file():
+            load_dotenv(p, override=False)
+
+
+_load_agentlab_dotenv()
+
 app = FastAPI(title="Agent Lab API", version="0.1.0")
 
 app.add_middleware(
