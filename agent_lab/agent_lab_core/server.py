@@ -78,6 +78,45 @@ def _db_for_project(project: Optional[str]) -> Path:
     return db
 
 
+def _db_and_run_for_tag(tag: str, project: Optional[str]) -> tuple[Path, Optional[dict]]:
+    """
+    Find which SQLite file contains this version tag.
+
+    When ``project`` is missing/default and ``AGENTLAB_PROJECTS_ROOT`` has several
+    ``*/.agentlab.db`` files, scan each until ``tag`` is found. Otherwise the UI
+    would use ``WorkingDirectory/.agentlab.db`` (wrong) and snapshots would never
+    resolve under ``target_projects/<name>/.agentlab/snapshots/``.
+    """
+    if project and project != "default":
+        db = _db_for_project(project)
+        if not db.exists():
+            return db, None
+        init_db(db)
+        return db, get_run_by_tag(db, tag)
+
+    all_dbs = _get_all_dbs()
+    if len(all_dbs) == 1:
+        db = next(iter(all_dbs.values()))
+        if not db.exists():
+            return db, None
+        init_db(db)
+        return db, get_run_by_tag(db, tag)
+
+    for _name, db_path in sorted(all_dbs.items()):
+        if not db_path.exists():
+            continue
+        init_db(db_path)
+        row = get_run_by_tag(db_path, tag)
+        if row:
+            return db_path, row
+
+    db = _db_path()
+    if not db.exists():
+        return db, None
+    init_db(db)
+    return db, get_run_by_tag(db, tag)
+
+
 def _resolve_snapshot_dir(snapshot_path: Optional[str], tag: str, db: Path) -> Optional[Path]:
     """
     Prefer the path stored in SQLite; fall back to <db.parent>/.agentlab/snapshots/<tag>.
@@ -259,9 +298,11 @@ def get_versions(project: Optional[str] = None):
 
 @app.get("/api/samples/{tag}")
 def get_samples(tag: str, project: Optional[str] = None):
-    db = _db_for_project(project)
+    db, run = _db_and_run_for_tag(tag, project)
     if not db.exists():
         raise HTTPException(404, "No database found.")
+    if not run:
+        raise HTTPException(404, f"Version '{tag}' not found.")
     samples = get_samples_for_tag(db, tag)
     if not samples:
         raise HTTPException(404, f"No samples found for tag '{tag}'.")
@@ -293,8 +334,7 @@ def get_snapshot(tag: str, project: Optional[str] = None):
       - raw source code of the main graph file (for Code tab)
       - list of all snapshotted files
     """
-    db = _db_for_project(project)
-    run = get_run_by_tag(db, tag)
+    db, run = _db_and_run_for_tag(tag, project)
     if not run:
         raise HTTPException(404, f"Version '{tag}' not found.")
 
@@ -578,7 +618,7 @@ def get_traces_for_tag(
     except Exception as e:
         return {"traces": [], "tag": tag, "langfuse_available": False, "error": str(e)}
 
-    db = _db_for_project(project)
+    db, run_row = _db_and_run_for_tag(tag, project)
     sample_rows: list[dict] = []
     if db.exists():
         try:
@@ -595,10 +635,8 @@ def get_traces_for_tag(
 
     n_from_rows = (max(int(s["sample_idx"]) for s in sample_rows) + 1) if sample_rows else 0
     n_from_run = 0
-    if db.exists():
-        run_row = get_run_by_tag(db, tag)
-        if run_row:
-            n_from_run = int(run_row.get("total_cases") or 0)
+    if run_row:
+        n_from_run = int(run_row.get("total_cases") or 0)
 
     count_clamped = max(0, min(int(count), 2000))
     n_samples = max(n_from_rows, n_from_run, count_clamped)
