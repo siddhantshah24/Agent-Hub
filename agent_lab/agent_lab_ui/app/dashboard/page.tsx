@@ -1,383 +1,320 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { type CSSProperties } from "react";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import {
   Activity, Zap, DollarSign, Layers, GitCompare,
-  TrendingUp, TrendingDown, Minus, ChevronRight,
-  Code2, X, ChevronDown, Pencil, Check, Shield,
+  TrendingUp, TrendingDown, Minus,
+  GitBranch, ArrowRight,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
-  API, PURPLE, EMERALD, ROSE, SURFACE, BORDER, MUTED,
-  type Run, type Project, type Snapshot,
-  ProjectSelector, SnapshotModal, WorkspaceShell,
+  BORDER,
+  CYAN,
+  EMERALD,
+  MUTED,
+  PURPLE,
+  ROSE,
+  SURFACE,
+  ProjectSelector,
+  WorkspaceShell,
 } from "@/components/agent-lab/workspace-ui";
+import { VeraMascot } from "@/components/vera";
+import { useAgentLabWorkspace } from "@/hooks/use-agentlab-workspace";
 
-const AMB = "#F59E0B";
-
-// ── Inline notes editor ─────────────────────────────────────────────────────
-function NotesCell({ tag, initialNotes, project }: { tag: string; initialNotes: string; project: string }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(initialNotes);
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (value === initialNotes) { setEditing(false); return; }
-    setSaving(true);
-    const pq = project !== "default" ? `?project=${encodeURIComponent(project)}` : "";
-    await fetch(`${API}/api/runs/${encodeURIComponent(tag)}/notes${pq}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes: value }),
-    }).catch(() => {});
-    setSaving(false);
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-        <input
-          autoFocus
-          className="flex-1 rounded-md px-2 py-1 text-xs text-slate-200 outline-none"
-          style={{ background: "#2a2540", border: `1px solid ${BORDER}` }}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }}
-        />
-        <button onClick={save} disabled={saving} className="p-1 rounded" style={{ color: EMERALD }}>
-          <Check size={12} />
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="group flex items-center gap-1.5 cursor-pointer" onClick={e => { e.stopPropagation(); setEditing(true); }}>
-      <span className="text-xs truncate max-w-[160px]" style={{ color: value.trim() ? "rgb(148 163 184)" : MUTED }}>
-        {value.trim() || "add note…"}
-      </span>
-      <Pencil size={10} className="opacity-0 group-hover:opacity-60 transition-opacity shrink-0" style={{ color: MUTED }} />
-    </div>
-  );
-}
-
-// ── Metric card ──────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, icon: Icon, color, trend }: {
-  label: string; value: string; sub?: string;
-  icon: React.ElementType; color: string; trend?: number;
+// ── Metric Card ─────────────────────────────────────────────────────────────
+function MetricCard({ label, value, sub, icon: Icon, iconColor, trend, trendUnit = "%", lowerIsBetter }: {
+  label: string; value: string; sub: string;
+  icon: LucideIcon; iconColor: string; trend?: number | null;
+  /** Use "ms" for latency delta (not a percentage). */
+  trendUnit?: "%" | "ms";
+  /** When true, a positive delta is bad (e.g. latency up). */
+  lowerIsBetter?: boolean;
 }) {
-  const TrendIcon = trend == null ? null : trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
-  const trendColor = trend == null ? MUTED : trend > 0 ? EMERALD : trend < 0 ? ROSE : MUTED;
+  const TrendIcon = trend != null && trend > 0 ? TrendingUp : trend != null && trend < 0 ? TrendingDown : Minus;
+  const goodWhenPositive = !lowerIsBetter;
+  const trendColor =
+    trend == null ? MUTED
+      : trend === 0 ? MUTED
+        : (trend > 0 ? goodWhenPositive : !goodWhenPositive) ? EMERALD : ROSE;
+  const trendText =
+    trend == null
+      ? null
+      : trendUnit === "ms"
+        ? `${trend > 0 ? "+" : ""}${trend} ms`
+        : `${trend > 0 ? "+" : ""}${trend}%`;
   return (
-    <div className="rounded-xl p-5 transition-colors" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: MUTED }}>{label}</span>
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${color}15` }}>
-          <Icon size={13} style={{ color }} />
+    <div className="card-surface p-5 flex flex-col gap-4 cursor-default" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
+      <div className="flex items-start justify-between">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: `${iconColor}18`, boxShadow: `0 0 12px ${iconColor}22` }}>
+          <Icon size={17} style={{ color: iconColor }} />
         </div>
+        {trend != null && trendText != null && (
+          <div className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: trendColor, background: `${trendColor}15`, border: `1px solid ${trendColor}30` }}>
+            <TrendIcon size={10} />
+            {trendText}
+            {trendUnit === "%" ? "" : " vs prev"}
+          </div>
+        )}
       </div>
-      <p className="text-2xl font-bold tracking-tight text-slate-100">{value}</p>
-      {(sub || TrendIcon) && (
-        <div className="flex items-center gap-1.5 mt-1.5">
-          {TrendIcon && <TrendIcon size={11} style={{ color: trendColor }} />}
-          {sub && <span className="text-xs" style={{ color: MUTED }}>{sub}</span>}
-        </div>
-      )}
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-widest text-slate-500 mb-1">{label}</p>
+        <p className="text-3xl font-bold tracking-tight text-slate-200 font-mono">{value}</p>
+        <p className="text-xs text-slate-500 mt-1.5">{sub}</p>
+      </div>
     </div>
   );
 }
 
-// ── Main dashboard ───────────────────────────────────────────────────────────
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value?: number }[]; label?: string }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="px-3 py-2 rounded-xl text-sm shadow-2xl" style={{ background: SURFACE, border: `1px solid ${BORDER}`, backdropFilter: "blur(8px)" }}>
+      <p className="text-slate-500 mb-1 font-mono text-xs">{label}</p>
+      <p style={{ color: PURPLE }} className="font-bold">{payload[0].value}% pass</p>
+    </div>
+  );
+};
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-72 gap-4 text-center">
+      <div
+        className="w-20 h-20 rounded-2xl flex items-center justify-center mb-1 overflow-hidden"
+        style={{
+          background: `linear-gradient(145deg, rgba(124,58,237,0.2), ${SURFACE})`,
+          border: `1px solid ${BORDER}`,
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+        }}
+      >
+        <VeraMascot size={72} showFootnote={false} title="VERA: no runs yet" animate />
+      </div>
+      <p className="text-xs font-mono uppercase tracking-[0.15em]" style={{ color: MUTED }}>VERA · Versioning agent</p>
+      <p className="text-xl font-semibold text-slate-200">No evaluations yet</p>
+      <p className="text-slate-500 text-sm max-w-sm">Run your first evaluation to start tracking agent behaviour across versions.</p>
+      <code className="mt-1 px-3 py-1.5 rounded-lg text-sm font-mono" style={{ background: SURFACE, color: PURPLE, border: `1px solid ${BORDER}` }}>
+        agentlab eval --tag v1
+      </code>
+    </div>
+  );
+}
+
+function NavCards({ projectQs }: { projectQs: string }) {
+  const card: CSSProperties = {
+    background: SURFACE,
+    borderColor: BORDER,
+  };
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+      <Link
+        href={`/version-history${projectQs}`}
+        className="group flex flex-col gap-3 rounded-xl border p-5 text-left transition-all hover:brightness-110"
+        style={card}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+            style={{ background: `${PURPLE}18`, boxShadow: `0 0 12px ${PURPLE}22` }}
+          >
+            <GitBranch size={20} style={{ color: PURPLE }} />
+          </div>
+          <div>
+            <h2 className="font-semibold text-slate-200">Version history</h2>
+            <p className="mt-0.5 text-xs leading-relaxed" style={{ color: MUTED }}>
+              Browse runs, notes, open a run, frozen snapshot.
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: PURPLE }}>
+          Open <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </Link>
+      <Link
+        href={`/diff-viewer${projectQs}`}
+        className="group flex flex-col gap-3 rounded-xl border p-5 text-left transition-all hover:brightness-110"
+        style={card}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+            style={{ background: `${CYAN}18`, boxShadow: `0 0 12px ${CYAN}22` }}
+          >
+            <GitCompare size={20} style={{ color: CYAN }} />
+          </div>
+          <div>
+            <h2 className="font-semibold text-slate-200">Diff Viewer</h2>
+            <p className="mt-0.5 text-xs leading-relaxed" style={{ color: MUTED }}>
+              Pick two versions, then open side-by-side compare.
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: CYAN }}>
+          Open <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </Link>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [project, setProject] = useState(searchParams.get("project") ?? "default");
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [snapTag, setSnapTag] = useState<string | null>(null);
-
-  // Load projects list
-  useEffect(() => {
-    fetch(`${API}/api/projects`)
-      .then(r => r.json())
-      .then(d => {
-        setProjects(d.projects ?? []);
-        if (d.projects?.length && project === "default") {
-          const first = d.projects[0].name;
-          setProject(first);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Load runs whenever project changes
-  useEffect(() => {
-    setLoading(true);
-    setSelected([]);
-    const url = project === "default"
-      ? `${API}/api/versions`
-      : `${API}/api/versions?project=${encodeURIComponent(project)}`;
-    fetch(url)
-      .then(r => r.json())
-      .then(d => { setRuns(d.runs ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [project]);
+  const {
+    urlProject,
+    resolvedProject,
+    projects,
+    runs,
+    showLoading,
+    setSelectedProject,
+    projectQs,
+  } = useAgentLabWorkspace("/dashboard");
 
   const latest = runs[runs.length - 1];
-  const prev   = runs[runs.length - 2];
+  const prev = runs[runs.length - 2];
+  const srTrendPct = prev && latest ? Math.round((latest.success_rate - prev.success_rate) * 10) / 10 : null;
+  const latDeltaMs = prev && latest ? Math.round(latest.avg_latency_ms - prev.avg_latency_ms) : null;
 
   const chartData = runs.map(r => ({
     tag: r.version_tag.replace(/^run-\d+-/, "").slice(0, 8),
     pass: r.success_rate,
-    full_tag: r.version_tag,
   }));
 
-  function toggleSelect(tag: string) {
-    setSelected(s =>
-      s.includes(tag) ? s.filter(x => x !== tag)
-        : s.length < 2 ? [...s, tag]
-        : [s[1], tag]
+  if (showLoading) {
+    return (
+      <WorkspaceShell>
+        <div className="flex min-h-[18rem] items-center justify-center">
+          <div
+            className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent"
+            style={{ borderColor: `${CYAN}66`, borderTopColor: "transparent" }}
+          />
+          <p className="ml-3 text-sm text-slate-500">Loading runs…</p>
+        </div>
+      </WorkspaceShell>
     );
   }
 
-  function goCompare() {
-    if (selected.length !== 2) return;
-    const [v1, v2] = selected;
-    router.push(`/diff?v1=${encodeURIComponent(v1)}&v2=${encodeURIComponent(v2)}&project=${encodeURIComponent(project)}`);
-  }
-
-  function goRun(tag: string) {
-    router.push(`/run/${encodeURIComponent(tag)}?project=${encodeURIComponent(project)}`);
-  }
-
-  const srTrend = latest && prev ? latest.success_rate - prev.success_rate : undefined;
-  const latTrend = latest && prev ? prev.avg_latency_ms - latest.avg_latency_ms : undefined;
-
   return (
     <WorkspaceShell>
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">Evaluation Overview</h1>
-          <p className="text-sm mt-1" style={{ color: MUTED }}>
-            {runs.length} version{runs.length !== 1 ? "s" : ""} evaluated
-            {latest && ` · latest: ${latest.total_cases} samples`}
-          </p>
-        </div>
-        <ProjectSelector projects={projects} selected={project} onChange={setProject} />
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center h-40">
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE, borderTopColor: "transparent" }} />
-        </div>
-      ) : runs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-40 gap-3">
-          <p className="text-slate-400">No runs found for this project.</p>
-          <code className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "#1a1528", color: EMERALD, border: `1px solid ${BORDER}` }}>
-            agentlab eval --tag v1
-          </code>
-        </div>
-      ) : (
-        <>
-          {/* Stat cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard label="Latest Success Rate" value={`${latest.success_rate}%`}
-              sub={`${latest.total_cases} samples`} icon={Activity} color={EMERALD}
-              trend={srTrend} />
-            <StatCard label="Avg Latency" value={`${latest.avg_latency_ms.toFixed(0)} ms`}
-              sub="last run" icon={Zap} color={AMB} trend={latTrend} />
-            <StatCard label="Avg Cost / Run" value={`$${latest.avg_cost_usd.toFixed(5)}`}
-              sub="last run" icon={DollarSign} color={PURPLE} />
-            <StatCard label="Versions Evaluated" value={String(runs.length)}
-              sub="all time" icon={Layers} color={PURPLE} />
-          </div>
-
-          {/* Chart */}
-          <div className="rounded-xl p-5 mb-6" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Activity size={14} style={{ color: PURPLE }} />
-              <span className="text-sm font-semibold text-slate-200">Success Rate Over Versions</span>
-              <span className="text-xs ml-auto" style={{ color: MUTED }}>golden dataset pass rate (%)</span>
+      <div className="space-y-8">
+        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-end gap-4 sm:gap-5">
+            <VeraMascot size={44} showFootnote={false} className="hidden sm:block mb-0.5 shrink-0" title="VERA" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: CYAN }}>
+                VERA · versioning agent
+              </p>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-200">Evaluation Overview</h1>
+              {runs.length > 0 && (
+                <p className="text-slate-500 text-sm mt-1">
+                  {runs.length} version{runs.length !== 1 ? "s" : ""} · {latest.total_cases}-sample dataset
+                </p>
+              )}
             </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={chartData} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
-                <defs>
-                  <linearGradient id="grad-pass" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={PURPLE} stopOpacity={0.25} />
-                    <stop offset="95%" stopColor={PURPLE} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#2A263D" strokeDasharray="4 4" vertical={false} />
-                <XAxis dataKey="tag" tick={{ fill: MUTED, fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 10 }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "#1A1729", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: PURPLE }}
-                  itemStyle={{ color: EMERALD }}
-                />
-                <ReferenceLine y={80} stroke={EMERALD} strokeDasharray="4 4" strokeOpacity={0.4} />
-                <Area type="monotone" dataKey="pass" stroke={PURPLE} strokeWidth={2}
-                  fill="url(#grad-pass)" dot={{ fill: PURPLE, r: 3 }} activeDot={{ r: 5, fill: PURPLE }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Version history table */}
-          <div className="rounded-xl overflow-hidden" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
-            <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: `1px solid ${BORDER}`, background: "#1A1729" }}>
-              <div className="flex items-center gap-2">
-                <Layers size={14} style={{ color: PURPLE }} />
-                <span className="text-sm font-semibold text-slate-200">Version History</span>
-                {selected.length > 0 && (
-                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#A78BFA20", color: PURPLE }}>
-                    {selected.length}/2 selected
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs" style={{ color: MUTED }}>
-                  {selected.length < 2 ? "Click rows to select for comparison." : ""}
-                </span>
-                <button
-                  onClick={goCompare}
-                  disabled={selected.length !== 2}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                  style={{
-                    background: selected.length === 2 ? "linear-gradient(135deg, #7C3AED, #6D28D9)" : "#2a2540",
-                    color: selected.length === 2 ? "white" : MUTED,
-                    border: `1px solid ${selected.length === 2 ? "#7C3AED50" : BORDER}`,
-                    opacity: selected.length === 2 ? 1 : 0.6,
-                  }}
-                >
-                  <GitCompare size={12} /> Compare
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                    {["Version", "Success Rate", "Avg Latency", "Avg Cost", "Cases", "Timestamp", "Notes", ""].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...runs].reverse().map(r => {
-                    const isSelected = selected.includes(r.version_tag);
-                    const hashShort = r.content_hash ? r.content_hash.slice(0, 8) : null;
-                    const prevRun = runs[runs.indexOf(r) - 1];
-                    const unchanged = prevRun && prevRun.content_hash && r.content_hash === prevRun.content_hash;
-                    return (
-                      <tr
-                        key={r.id}
-                        onClick={() => toggleSelect(r.version_tag)}
-                        className="cursor-pointer transition-colors"
-                        style={{
-                          borderBottom: `1px solid ${BORDER}`,
-                          background: isSelected ? "rgba(167,139,250,0.08)" : undefined,
-                        }}
-                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "#1A1825"; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? "rgba(167,139,250,0.08)" : ""; }}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-semibold text-sm" style={{ color: isSelected ? PURPLE : "white" }}>
-                                {r.version_tag}
-                              </span>
-                              {r.avg_ragas_faithfulness != null && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{
-                                  color: r.avg_ragas_faithfulness >= 0.8 ? EMERALD : r.avg_ragas_faithfulness >= 0.6 ? AMB : ROSE,
-                                  background: "rgba(255,255,255,0.06)",
-                                }}>
-                                  F:{r.avg_ragas_faithfulness.toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {hashShort && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ color: MUTED, background: "rgba(155,151,187,0.1)", border: `1px solid ${BORDER}` }}>
-                                  #{hashShort}
-                                </span>
-                              )}
-                              {unchanged && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ color: AMB, background: "rgba(245,158,11,0.08)" }}>
-                                  ≡ unchanged
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="font-semibold" style={{ color: r.success_rate >= 80 ? EMERALD : r.success_rate >= 50 ? AMB : ROSE }}>
-                            {r.success_rate}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-300 font-mono text-xs">{r.avg_latency_ms.toFixed(0)} ms</td>
-                        <td className="px-4 py-3 text-slate-300 font-mono text-xs">${r.avg_cost_usd.toFixed(6)}</td>
-                        <td className="px-4 py-3 text-slate-300 text-xs">{r.total_cases}</td>
-                        <td className="px-4 py-3 text-xs" style={{ color: MUTED }}>
-                          {new Date(r.timestamp + "Z").toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                        </td>
-                        <td className="px-4 py-3">
-                          <NotesCell tag={r.version_tag} initialNotes={r.notes ?? ""} project={project} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={e => { e.stopPropagation(); setSnapTag(r.version_tag); }}
-                              className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-                              title="View snapshot"
-                            >
-                              <Code2 size={13} style={{ color: MUTED }} />
-                            </button>
-                            <button
-                              onClick={e => { e.stopPropagation(); goRun(r.version_tag); }}
-                              className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-                              title="View run details"
-                            >
-                              <ChevronRight size={13} style={{ color: MUTED }} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="w-full min-w-[12rem] sm:w-auto">
+              <ProjectSelector projects={projects} selected={resolvedProject ?? urlProject} onChange={setSelectedProject} />
             </div>
           </div>
 
-          {/* RAGAS summary if available */}
-          {latest.avg_ragas_faithfulness != null && (
-            <div className="mt-4 rounded-xl p-4 flex flex-wrap gap-4" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
-              <Shield size={14} style={{ color: PURPLE }} className="mt-0.5" />
-              <span className="text-xs font-medium text-slate-300">RAGAS (latest):</span>
-              {[
-                { label: "Faithfulness", val: latest.avg_ragas_faithfulness },
-                { label: "Relevancy", val: latest.avg_ragas_relevancy },
-                { label: "Precision", val: latest.avg_ragas_precision },
-              ].map(({ label, val }) => val != null && (
-                <span key={label} className="text-xs font-mono" style={{ color: val >= 0.8 ? EMERALD : val >= 0.6 ? AMB : ROSE }}>
-                  {label}: {val.toFixed(3)}
-                </span>
-              ))}
+          {srTrendPct !== null && (
+            <div
+              className="flex shrink-0 items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full"
+              style={{
+                color: srTrendPct > 0 ? EMERALD : srTrendPct < 0 ? ROSE : MUTED,
+                background: srTrendPct > 0 ? "rgba(52,211,153,0.12)" : srTrendPct < 0 ? "rgba(251,113,133,0.10)" : "rgba(100,116,139,0.10)",
+                border: `1px solid ${srTrendPct > 0 ? "rgba(52,211,153,0.28)" : srTrendPct < 0 ? "rgba(251,113,133,0.25)" : "rgba(100,116,139,0.20)"}`,
+              }}
+            >
+              {srTrendPct > 0 ? <TrendingUp size={13} /> : srTrendPct < 0 ? <TrendingDown size={13} /> : <Minus size={13} />}
+              {srTrendPct > 0 ? "+" : ""}{srTrendPct}% vs previous
             </div>
           )}
-        </>
-      )}
+        </div>
 
-      {/* Snapshot modal */}
-      {snapTag && <SnapshotModal tag={snapTag} project={project} onClose={() => setSnapTag(null)} />}
+        <NavCards projectQs={projectQs} />
+
+        {runs.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-4">
+              <MetricCard
+                label="Latest Pass Rate"
+                value={`${latest.success_rate}%`}
+                sub={`on ${latest.version_tag}`}
+                icon={Activity}
+                iconColor={latest.success_rate >= 80 ? EMERALD : latest.success_rate >= 50 ? "#F59E0B" : ROSE}
+                trend={srTrendPct}
+                trendUnit="%"
+              />
+              <MetricCard
+                label="Avg Latency"
+                value={`${latest.avg_latency_ms.toFixed(0)}`}
+                sub="ms per call · last run"
+                icon={Zap}
+                iconColor="#F59E0B"
+                trend={latDeltaMs}
+                trendUnit="ms"
+                lowerIsBetter
+              />
+              <MetricCard
+                label="Avg Cost / Call"
+                value={`$${latest.avg_cost_usd.toFixed(4)}`}
+                sub="last run"
+                icon={DollarSign}
+                iconColor="#A78BFA"
+              />
+              <MetricCard
+                label="Versions Evaluated"
+                value={String(runs.length)}
+                sub={`${runs.reduce((s, r) => s + r.total_cases, 0)} total evals`}
+                icon={Layers}
+                iconColor={PURPLE}
+              />
+            </div>
+
+            <div className="min-w-0 rounded-xl p-4 sm:p-6" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-slate-200">Pass Rate Trend</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Golden dataset accuracy across versions · 80% target line</p>
+                </div>
+              </div>
+              <div className="h-[220px] w-full min-w-0">
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={PURPLE} stopOpacity={0.38} />
+                        <stop offset="55%" stopColor={CYAN} stopOpacity={0.14} />
+                        <stop offset="95%" stopColor={CYAN} stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="lineAccent" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor={PURPLE} />
+                        <stop offset="100%" stopColor={CYAN} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="tag" tick={{ fontSize: 11, fill: MUTED, fontFamily: "var(--font-mono)" }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: MUTED }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <ReferenceLine y={80} stroke={EMERALD} strokeDasharray="4 4" strokeOpacity={0.5} strokeWidth={1} />
+                    <Area
+                      type="monotone"
+                      dataKey="pass"
+                      stroke="url(#lineAccent)"
+                      strokeWidth={2.5}
+                      fill="url(#purpleGrad)"
+                      dot={{ r: 5, fill: PURPLE, stroke: "#0a0612", strokeWidth: 2 }}
+                      activeDot={{ r: 7, fill: CYAN, style: { filter: "drop-shadow(0 0 8px rgba(34,211,238,0.65))" } }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </WorkspaceShell>
   );
 }

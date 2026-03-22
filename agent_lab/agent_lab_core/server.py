@@ -62,10 +62,15 @@ def _get_all_dbs() -> dict[str, Path]:
 
 
 def _db_for_project(project: Optional[str]) -> Path:
+    all_dbs = _get_all_dbs()
     if not project or project == "default":
-        db = _db_path()
+        # Multi-repo: runs live under each target's .agentlab.db, not cwd. Using only cwd
+        # here made /api/versions look empty while /api/projects showed run counts.
+        if len(all_dbs) == 1:
+            db = next(iter(all_dbs.values()))
+        else:
+            db = _db_path()
     else:
-        all_dbs = _get_all_dbs()
         db = all_dbs.get(project, _db_path())
     # Always ensure schema is up-to-date (idempotent — safe to call on every request)
     if db.exists():
