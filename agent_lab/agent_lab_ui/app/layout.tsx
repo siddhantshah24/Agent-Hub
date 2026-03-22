@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { Cpu, ExternalLink, GitBranch } from "lucide-react";
+import { Github } from "lucide-react";
+import { MainNav } from "@/components/main-nav";
+import { VeraMascot } from "@/components/vera";
 import "./globals.css";
 
 // Inter — best-in-class readability for UI text
@@ -18,11 +20,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agent Lab",
-  description: "Local MLOps platform for LangGraph agents",
+  title: "AgentLab",
+  description: "Golden evals, versioning, and observability for LangGraph-style agents. VERA is your versioning guide across runs and diffs.",
 };
 
-const BG   = "#1C1830";
+/** Solid dark purple canvas (no grid overlay) */
+const BG   = "#1a1628";
 const SURF = "#231F3A";
 const BDR  = "#3D3860";
 
@@ -30,38 +33,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen`}
+        className={`${inter.variable} ${jetbrainsMono.variable} flex min-h-screen flex-col overflow-x-hidden antialiased`}
         style={{ backgroundColor: BG, color: "#EDE9F8", fontFamily: "var(--font-inter), sans-serif" }}
       >
-        {/* Subtle grid */}
-        <div className="fixed inset-0 bg-grid pointer-events-none" aria-hidden />
-
-        {/* Top purple bloom */}
-        <div
-          className="fixed top-0 left-1/2 -translate-x-1/2 w-[900px] h-[350px] pointer-events-none"
-          style={{ background: "radial-gradient(ellipse 70% 60% at 50% -5%, rgba(167,139,250,0.14) 0%, transparent 75%)" }}
-          aria-hidden
-        />
-
         {/* ── Nav ──────────────────────────────────────────────────────────── */}
         <header
           className="sticky top-0 z-50 border-b backdrop-blur-md"
           style={{ borderColor: BDR, backgroundColor: `${SURF}CC` }}
         >
-          <div className="max-w-7xl mx-auto px-6 h-14 flex items-center gap-5">
+          <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 sm:gap-5 sm:px-6 sm:py-0">
 
-            <a href="/" className="flex items-center gap-2.5 shrink-0 group">
+            <a href="/" className="flex min-w-0 items-center gap-2.5 shrink-0 group">
               <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden transition-all"
                 style={{
-                  background: "linear-gradient(135deg, #7C3AED, #A78BFA)",
-                  boxShadow: "0 0 14px rgba(167,139,250,0.30)",
+                  background: "linear-gradient(145deg, rgba(124,58,237,0.35), #1a1628)",
+                  boxShadow: "0 0 0 1px rgba(167,139,250,0.25), 0 8px 24px rgba(0,0,0,0.35)",
                 }}
               >
-                <Cpu size={14} className="text-white" />
+                <VeraMascot size={34} showFootnote={false} title="AgentLab: home" />
               </div>
               <span className="font-semibold text-base tracking-tight" style={{ color: "#EDE9F8" }}>
-                Agent Lab
+                AgentLab
               </span>
             </a>
 
@@ -74,28 +67,34 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 background: "rgba(167,139,250,0.08)",
               }}
             >
-              v0.1.0
+              v1.0
             </span>
 
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs" style={{ color: "#9B97BB" }}>local</span>
-            </div>
-
-            <nav className="ml-auto flex items-center gap-1">
-              <a href="/"
-                className="nav-link flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors">
-                <GitBranch size={13} /> Overview
-              </a>
-              <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer"
-                className="nav-link flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors">
-                <ExternalLink size={13} /> Langfuse
-              </a>
-            </nav>
+            <MainNav />
           </div>
         </header>
 
-        <main className="relative z-10 max-w-7xl mx-auto px-6 py-8">{children}</main>
+        <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-6 py-8">{children}</main>
+
+        <footer
+          className="relative z-10 mt-auto border-t"
+          style={{ borderColor: BDR, backgroundColor: `${SURF}99` }}
+        >
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row sm:px-6 sm:py-5">
+            <p className="text-center text-xs sm:text-left" style={{ color: "#A59BC8" }}>
+              © {new Date().getFullYear()} team SSH.exe
+            </p>
+            <a
+              href="https://github.com/siddhantshah24/Agent-Hub"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="nav-link inline-flex items-center gap-2 text-xs font-medium sm:text-sm"
+            >
+              <Github size={15} className="shrink-0 opacity-90" aria-hidden />
+              GitHub
+            </a>
+          </div>
+        </footer>
       </body>
     </html>
   );

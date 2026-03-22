@@ -58,7 +58,7 @@ python -m pip install --upgrade pip
 
 ```bash
 pip install -e agent_lab/
-pip install langchain-groq
+pip install langchain-openai
 
 cd agent_lab/agent_lab_ui
 npm install

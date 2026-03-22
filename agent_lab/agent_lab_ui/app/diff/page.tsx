@@ -9,11 +9,12 @@ import {
   ArrowRight, ChevronDown, ChevronRight, Wrench, Brain,
   MessageSquare, Hash, Clock, AlertCircle, Loader2, Cpu,
 } from "lucide-react";
+import { VeraMascot } from "@/components/vera";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Palette (lighter, readable) ──────────────────────────────────────────────
-const BG      = "#1C1830";
+const BG      = "#1a1628";
 const SURF    = "#231F3A";
 const SURF2   = "#2B2748";
 const BORDER  = "#3D3860";
@@ -83,7 +84,7 @@ interface TracesResponse { traces: TraceInfo[]; tag: string; found?: number; err
 
 // ── Small utilities ───────────────────────────────────────────────────────────
 function DeltaBadge({ value, unit = "", invert = false }: { value: number | null | undefined; unit?: string; invert?: boolean }) {
-  if (value == null) return <span className="text-xs px-2 py-0.5 rounded-full" style={{ color: MUTED, background: "rgba(155,151,187,0.10)", border: "1px solid rgba(155,151,187,0.20)", fontFamily: MONO }}>—</span>;
+  if (value == null) return <span className="text-xs px-2 py-0.5 rounded-full" style={{ color: MUTED, background: "rgba(155,151,187,0.10)", border: "1px solid rgba(155,151,187,0.20)", fontFamily: MONO }}>-</span>;
   const positive = invert ? value < 0 : value > 0;
   const color    = value === 0 ? MUTED : positive ? EMERALD : ROSE;
   const bg       = value === 0 ? "rgba(155,151,187,0.10)" : positive ? "rgba(74,222,128,0.10)" : "rgba(255,122,150,0.10)";
@@ -93,7 +94,7 @@ function DeltaBadge({ value, unit = "", invert = false }: { value: number | null
     <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
       style={{ color, background: bg, border: `1px solid ${bdr}`, fontFamily: MONO }}>
       <Icon size={9} />
-      {value === 0 ? "—" : `${value > 0 ? "+" : ""}${value}${unit}`}
+      {value === 0 ? "-" : `${value > 0 ? "+" : ""}${value}${unit}`}
     </span>
   );
 }
@@ -168,7 +169,7 @@ function ExecutionChain({ chain, noTraceMsg }: { chain?: ChainStep[]; noTraceMsg
     return (
       <div className="rounded-lg px-3 py-4 text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
         <p className="text-xs italic" style={{ color: MUTED }}>
-          {noTraceMsg ?? "No trace — run eval to capture execution"}
+          {noTraceMsg ?? "No trace: run eval to capture execution"}
         </p>
       </div>
     );
@@ -260,7 +261,7 @@ function PromptBlock({ prompt, label, color }: { prompt: string | null | undefin
         </pre>
       ) : (
         <p className="text-xs italic p-3 rounded-lg" style={{ background: BG, border: `1px solid ${BORDER}`, color: MUTED }}>
-          Not captured — run a newer eval to see prompts in traces
+          Not captured. Run a newer eval to see prompts in traces.
         </p>
       )}
     </div>
@@ -323,7 +324,8 @@ function TracePanel({
 }) {
   const passed = sample[`${version}_passed`] as boolean;
   const got    = sample[`${version}_got`]    as string;
-  const ms     = sample[`${version}_latency_ms`] as number | undefined;
+  const msRaw  = sample[`${version}_latency_ms`] as number | null | undefined;
+  const ms     = typeof msRaw === "number" && Number.isFinite(msRaw) ? msRaw : null;
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -334,7 +336,7 @@ function TracePanel({
           <PassBadge passed={passed} />
         </div>
         <div className="flex items-center gap-3 text-xs" style={{ color: MUTED }}>
-          {ms !== undefined && (
+          {ms !== null && (
             <span className="flex items-center gap-1"><Clock size={10} />{ms.toFixed(0)} ms</span>
           )}
           {trace?.langfuse_url && (
@@ -379,7 +381,7 @@ function TracePanel({
           <div className="text-center py-6">
             <AlertCircle size={20} className="mx-auto mb-2" style={{ color: MUTED }} />
             <p className="text-xs" style={{ color: MUTED }}>
-              {trace?.error ? `Trace error: ${trace.error}` : "No trace found — run eval again to capture"}
+              {trace?.error ? `Trace error: ${trace.error}` : "No trace found. Run eval again to capture."}
             </p>
           </div>
         </div>
@@ -416,14 +418,14 @@ function SampleCompareRow({
     <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${rowBorderColor}`, background: rowBg }}>
       {/* Row header — click to expand */}
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.02]"
+        className="flex w-full min-w-0 flex-wrap items-center gap-2 px-3 py-3 text-left transition-colors hover:bg-white/[0.02] sm:gap-3 sm:px-4"
         onClick={() => setOpen(!open)}
       >
         <span className="text-xs shrink-0" style={{ color: MUTED, fontFamily: MONO, width: "2rem", textAlign: "right" }}>
           #{sample.sample_idx}
         </span>
 
-        <span className="flex-1 text-sm truncate" style={{ color: TEXT }}>{sample.input}</span>
+        <span className="min-w-0 flex-1 text-sm break-words sm:truncate sm:overflow-hidden" style={{ color: TEXT }}>{sample.input}</span>
 
         {/* V1 badge */}
         <PassBadge passed={p1} label={`${v1}: ${p1 ? "pass" : "fail"}`} />
@@ -475,11 +477,11 @@ function SampleCompareRow({
           )}
 
           {/* Split panels */}
-          <div className="grid grid-cols-2 gap-px mt-3" style={{ background: BORDER }}>
-            <div className="p-4" style={{ background: rowBg }}>
+          <div className="mt-3 grid grid-cols-1 gap-px sm:grid-cols-2" style={{ background: BORDER }}>
+            <div className="min-w-0 p-3 sm:p-4" style={{ background: rowBg }}>
               <TracePanel version={v1} sample={sample} trace={v1Trace} accentColor={MUTED} />
             </div>
-            <div className="p-4" style={{ background: rowBg }}>
+            <div className="min-w-0 p-3 sm:p-4" style={{ background: rowBg }}>
               <TracePanel version={v2} sample={sample} trace={v2Trace} accentColor={PURPLE} />
             </div>
           </div>
@@ -529,7 +531,7 @@ function ComparisonTab({
           {tracesLoading ? (
             <>
               <Loader2 size={12} className="animate-spin" style={{ color: PURPLE }} />
-              Loading Langfuse traces…
+              Loading traces…
             </>
           ) : (
             <>
@@ -541,10 +543,10 @@ function ComparisonTab({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-2 gap-px rounded-xl overflow-hidden" style={{ background: BORDER }}>
-        {[{ label: v1, color: MUTED }, { label: v2, color: PURPLE }].map(({ label, color }) => (
-          <div key={label} className="px-4 py-2 flex items-center gap-2" style={{ background: SURF2 }}>
-            <span className="text-xs font-bold" style={{ color, fontFamily: MONO }}>{label}</span>
+      <div className="grid grid-cols-1 overflow-hidden rounded-xl border sm:grid-cols-2" style={{ borderColor: BORDER }}>
+        {[{ label: v1, color: MUTED }, { label: v2, color: PURPLE }].map(({ label, color }, i) => (
+          <div key={label} className={`flex min-w-0 flex-wrap items-center gap-2 px-3 py-2 sm:px-4 ${i === 0 ? "border-b sm:border-b-0 sm:border-r" : ""}`} style={{ background: SURF2, borderColor: BORDER }}>
+            <span className="min-w-0 break-all text-xs font-bold" style={{ color, fontFamily: MONO }}>{label}</span>
             <span className="text-xs" style={{ color: MUTED }}>traces + tool calls</span>
           </div>
         ))}
@@ -609,37 +611,106 @@ function CodeDiffViewer({ diffLines, filename }: { diffLines: DiffLine[]; filena
     cur.lines.push({ ...line, idx });
   });
 
+  function buildSideBySideRows(lines: (DiffLine & { idx: number })[]): { left?: DiffLine & { idx: number }; right?: DiffLine & { idx: number } }[] {
+    const out: { left?: DiffLine & { idx: number }; right?: DiffLine & { idx: number } }[] = [];
+    let i = 0;
+    const arr = lines;
+    while (i < arr.length) {
+      const a = arr[i];
+      if (a.type === "equal") {
+        out.push({ left: a, right: a });
+        i++;
+      } else if (a.type === "delete") {
+        const b = arr[i + 1];
+        if (b?.type === "insert") {
+          out.push({ left: a, right: b });
+          i += 2;
+        } else {
+          out.push({ left: a, right: undefined });
+          i++;
+        }
+      } else {
+        out.push({ left: undefined, right: a });
+        i++;
+      }
+    }
+    return out;
+  }
+
+  function SideBySideBlock({ lines }: { lines: (DiffLine & { idx: number })[] }) {
+    const rows = buildSideBySideRows(lines);
+    return (
+      <>
+        {rows.map((row, ri) => {
+          return (
+            <div
+              key={`r-${ri}-${row.left?.idx ?? row.right?.idx}`}
+              className="grid grid-cols-2 gap-px"
+              style={{ background: BORDER }}
+            >
+              <div
+                className={`min-h-[1.5rem] pl-0 ${!row.left ? "opacity-40" : ""} ${
+                  row.left?.type === "delete" ? "diff-delete" : row.left?.type === "equal" ? "diff-equal" : ""
+                }`}
+                style={{ background: !row.left ? `${BG}` : undefined }}
+              >
+                <div className="flex">
+                  <span className="w-9 shrink-0 select-none py-0.5 pr-1 text-right text-[10px]" style={{ color: MUTED + "99" }}>
+                    {row.left?.v1_no ?? ""}
+                  </span>
+                  <span className="diff-side-pad flex-1 py-0.5 pr-2 font-mono text-[11px] leading-snug">
+                    {row.left ? row.left.content : " "}
+                  </span>
+                </div>
+              </div>
+              <div
+                className={`min-h-[1.5rem] pl-0 ${!row.right ? "opacity-40" : ""} ${
+                  row.right?.type === "insert" ? "diff-insert" : row.right?.type === "equal" ? "diff-equal" : ""
+                }`}
+                style={{ background: !row.right ? `${BG}` : undefined }}
+              >
+                <div className="flex">
+                  <span className="w-9 shrink-0 select-none py-0.5 pr-1 text-right text-[10px]" style={{ color: MUTED + "99" }}>
+                    {row.right?.v2_no ?? ""}
+                  </span>
+                  <span className="diff-side-pad flex-1 py-0.5 pr-2 font-mono text-[11px] leading-snug">
+                    {row.right ? row.right.content : " "}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
-      <div className="flex items-center gap-3 px-4 py-2.5" style={{ background: BG, borderBottom: `1px solid ${BORDER}` }}>
-        <Terminal size={13} style={{ color: MUTED }} />
-        <span className="text-xs" style={{ color: MUTED, fontFamily: MONO }}>{filename}</span>
+      <div
+        className="grid grid-cols-2 gap-px text-[10px] font-semibold uppercase tracking-wider"
+        style={{ background: BORDER }}
+      >
+        <div className="flex items-center gap-2 px-3 py-2" style={{ background: SURF2, color: MUTED }}>
+          <span style={{ color: ROSE }}>−</span> Baseline (removed)
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2" style={{ background: SURF2, color: MUTED }}>
+          <span style={{ color: EMERALD }}>+</span> Compare (added)
+        </div>
       </div>
-      <div className="text-xs leading-6 overflow-x-auto" style={{ background: BG, fontFamily: MONO }}>
+      <div className="text-xs leading-snug overflow-x-auto" style={{ background: BG, fontFamily: MONO }}>
         {groups.map((group, gi) =>
           group.type === "collapsed" ? (
-            <div key={gi} className="flex items-center gap-4 px-4 py-1 italic"
-              style={{ color: MUTED + "80", background: SURF, borderTop: `1px solid ${BORDER}30`, borderBottom: `1px solid ${BORDER}30` }}>
-              <span className="w-8 text-right">···</span>
-              <span className="w-8 text-right">···</span>
-              <span>{group.lines.length} unchanged lines</span>
+            <div
+              key={gi}
+              className="grid grid-cols-2 gap-px px-2 py-1.5 italic"
+              style={{ color: MUTED + "CC", background: SURF, borderTop: `1px solid ${BORDER}50`, borderBottom: `1px solid ${BORDER}50` }}
+            >
+              <span className="col-span-2 text-center">{group.lines.length} unchanged lines collapsed</span>
             </div>
-          ) : group.lines.map(line => (
-            <div key={line.idx}
-              className={line.type === "delete" ? "diff-delete" : line.type === "insert" ? "diff-insert" : "diff-equal"}
-              style={{ display: "flex" }}>
-              <span className="w-10 text-right pr-3 py-0.5 select-none" style={{ color: MUTED + "50" }}>{line.v1_no ?? ""}</span>
-              <span className="w-10 text-right pr-3 py-0.5 select-none" style={{ color: MUTED + "50" }}>{line.v2_no ?? ""}</span>
-              <span className="w-4 py-0.5 shrink-0 select-none font-bold"
-                style={{ color: line.type === "delete" ? ROSE : line.type === "insert" ? EMERALD : "transparent" }}>
-                {line.type === "delete" ? "−" : line.type === "insert" ? "+" : " "}
-              </span>
-              <span className="py-0.5 flex-1 pr-4 whitespace-pre"
-                style={{ color: line.type === "delete" ? ROSE : line.type === "insert" ? EMERALD : TEXT + "CC" }}>
-                {line.content}
-              </span>
-            </div>
-          ))
+          ) : (
+            <SideBySideBlock key={gi} lines={group.lines} />
+          )
         )}
       </div>
     </div>
@@ -700,12 +771,12 @@ function MetricsTab({ diff, samples, v1, v2 }: { diff: DiffData; samples: Sample
               v2Val={(r2.avg_ragas_faithfulness ?? 0).toFixed(3)}
               delta={deltas.avg_ragas_faithfulness ?? null} unit="" />
             <MetricBlock label="Answer Relevancy" icon={Activity} iconColor={PURPLE}
-              v1Val={r1.avg_ragas_relevancy != null ? r1.avg_ragas_relevancy.toFixed(3) : "—"}
-              v2Val={r2.avg_ragas_relevancy != null ? r2.avg_ragas_relevancy.toFixed(3) : "—"}
+              v1Val={r1.avg_ragas_relevancy != null ? r1.avg_ragas_relevancy.toFixed(3) : "-"}
+              v2Val={r2.avg_ragas_relevancy != null ? r2.avg_ragas_relevancy.toFixed(3) : "-"}
               delta={deltas.avg_ragas_relevancy ?? null} unit="" />
             <MetricBlock label="Context Precision" icon={Activity} iconColor={AMBER}
-              v1Val={r1.avg_ragas_precision != null ? r1.avg_ragas_precision.toFixed(3) : "—"}
-              v2Val={r2.avg_ragas_precision != null ? r2.avg_ragas_precision.toFixed(3) : "—"}
+              v1Val={r1.avg_ragas_precision != null ? r1.avg_ragas_precision.toFixed(3) : "-"}
+              v2Val={r2.avg_ragas_precision != null ? r2.avg_ragas_precision.toFixed(3) : "-"}
               delta={deltas.avg_ragas_precision ?? null} unit="" />
           </div>
         </div>
@@ -725,17 +796,16 @@ function MetricsTab({ diff, samples, v1, v2 }: { diff: DiffData; samples: Sample
         ))}
       </div>
 
-      <div className="rounded-xl p-4 flex items-center justify-between"
+      <div className="rounded-xl p-4 flex items-start gap-4"
         style={{ background: "rgba(61,56,96,0.40)", border: `1px solid ${BORDER}` }}>
+        <VeraMascot size={44} showFootnote={false} title="VERA: traces tip" className="shrink-0" />
         <div>
-          <p className="text-sm font-medium" style={{ color: TEXT }}>View per-call tool traces in Langfuse</p>
-          <p className="text-xs mt-0.5" style={{ color: MUTED }}>Filter by run name <code style={{ fontFamily: MONO }}>agentlab/{v2}/sample-*</code></p>
+          <p className="text-sm font-medium" style={{ color: TEXT }}>Tool traces in split compare</p>
+          <p className="text-xs mt-1 leading-relaxed" style={{ color: MUTED }}>
+            Expand each sample row to see execution chains and prompts. When your eval records a trace URL, use the{" "}
+            <span className="font-mono text-violet-300/90">trace</span> link on each side for the full timeline.
+          </p>
         </div>
-        <a href="http://localhost:3000" target="_blank" rel="noopener"
-          className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg transition-opacity hover:opacity-80 shrink-0 ml-4"
-          style={{ background: "rgba(167,139,250,0.15)", color: PURPLE, border: `1px solid rgba(167,139,250,0.30)` }}>
-          Open Langfuse <ExternalLink size={13} />
-        </a>
       </div>
     </div>
   );
@@ -776,6 +846,11 @@ function DiffContent() {
   useEffect(() => {
     if (!v1 || !v2) return;
     setLoading(true);
+    setError(null);
+    setSamples([]);
+    setV1Traces({});
+    setV2Traces({});
+    setTracesLoading(true);
     Promise.all([
       fetch(`${API}/api/diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : Promise.reject(r.statusText)),
       fetch(`${API}/api/snapshot-diff/${encodeURIComponent(v1)}/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() : null),
@@ -792,13 +867,27 @@ function DiffContent() {
       .catch(e => { setError(String(e)); setLoading(false); });
   }, [v1, v2, pq]);
 
-  // Fetch Langfuse traces separately (slower, don't block the page)
+  // Max sample index + 1 from compare table — primitive so we don't put ``samples`` in effect deps.
+  const compareTraceCount = samples.reduce((m, s) => Math.max(m, s.sample_idx + 1), 0);
+
+  // Fetch traces after compare samples load so ``count`` matches every row index.
   useEffect(() => {
-    if (!v1 || !v2) return;
+    if (!v1 || !v2 || loading) return;
+    const n = compareTraceCount;
+    if (n <= 0) {
+      setV1Traces({});
+      setV2Traces({});
+      setTracesLoading(false);
+      return;
+    }
     setTracesLoading(true);
+    const qs = new URLSearchParams();
+    qs.set("count", String(n));
+    if (project) qs.set("project", project);
+    const q = qs.toString();
     Promise.all([
-      fetch(`${API}/api/traces/${encodeURIComponent(v1)}${pq}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
-      fetch(`${API}/api/traces/${encodeURIComponent(v2)}${pq}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
+      fetch(`${API}/api/traces/${encodeURIComponent(v1)}?${q}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
+      fetch(`${API}/api/traces/${encodeURIComponent(v2)}?${q}`).then(r => r.ok ? r.json() as Promise<TracesResponse> : null),
     ])
       .then(([t1Resp, t2Resp]) => {
         const t1Map: Record<number, TraceInfo> = {};
@@ -810,16 +899,39 @@ function DiffContent() {
         setTracesLoading(false);
       })
       .catch(() => setTracesLoading(false));
-  }, [v1, v2, pq]);
+  }, [v1, v2, loading, compareTraceCount, project]);
 
-  if (!v1 || !v2) return (
-    <div className="flex items-center justify-center h-64" style={{ color: MUTED }}>No versions specified.</div>
-  );
+  if (!v1 || !v2) {
+    const pick = project ? `/diff-viewer?project=${encodeURIComponent(project)}` : "/diff-viewer";
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center" style={{ color: MUTED }}>
+        <p className="max-w-md text-sm leading-relaxed">
+          Choose a baseline and a compare version on the{" "}
+          <a href={pick} className="font-semibold text-violet-300 underline-offset-2 hover:underline">
+            Diff Viewer
+          </a>{" "}
+          page, or open it from the dashboard.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <a
+            href={pick}
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #0891b2, #22d3ee)", color: "#0a1620" }}
+          >
+            Go to Diff Viewer
+          </a>
+          <a href="/dashboard" className="nav-link text-sm">
+            ← Dashboard
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 flex-col gap-3">
       <Loader2 size={32} className="animate-spin" style={{ color: PURPLE }} />
-      <p className="text-sm animate-pulse" style={{ color: MUTED }}>Calling GPT-4o-mini behavioral analysis…</p>
+      <p className="text-sm animate-pulse" style={{ color: MUTED }}>Generating behavioral analysis…</p>
     </div>
   );
 
@@ -839,19 +951,26 @@ function DiffContent() {
   const hasCodeChanges = snapOk && snap!.stats?.has_changes;
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <a href={project ? `/?project=${encodeURIComponent(project)}` : "/"} className="nav-link flex items-center gap-1.5 text-sm transition-colors">
-          <ArrowLeft size={14} /> Overview
+      <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
+        <a href="/dashboard" className="nav-link flex items-center gap-1.5 text-sm transition-colors">
+          <ArrowLeft size={14} /> Dashboard
+        </a>
+        <a
+          href={project ? `/diff-viewer?project=${encodeURIComponent(project)}` : "/diff-viewer"}
+          className="nav-link text-sm"
+        >
+          Change versions
         </a>
 
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl"
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 px-3 py-2 rounded-xl sm:gap-3 sm:px-4"
           style={{ background: SURF, border: `1px solid ${BORDER}` }}>
-          <span className="font-bold" style={{ color: MUTED, fontFamily: MONO, fontSize: "16px" }}>{v1}</span>
-          <GitCompare size={14} style={{ color: PURPLE }} />
-          <span className="font-bold" style={{ color: PURPLE, fontFamily: MONO, fontSize: "16px" }}>{v2}</span>
+          <VeraMascot size={36} showFootnote={false} className="hidden sm:block shrink-0" title="VERA" />
+          <span className="min-w-0 break-all font-bold" style={{ color: MUTED, fontFamily: MONO, fontSize: "16px" }}>{v1}</span>
+          <GitCompare size={14} className="shrink-0" style={{ color: PURPLE }} />
+          <span className="min-w-0 break-all font-bold" style={{ color: PURPLE, fontFamily: MONO, fontSize: "16px" }}>{v2}</span>
         </div>
 
         {/* Stats pills */}
@@ -867,7 +986,7 @@ function DiffContent() {
         ))}
 
         {hasCodeChanges && (
-          <span className="ml-auto text-xs" style={{ color: MUTED, fontFamily: MONO }}>
+          <span className="w-full text-xs sm:ml-auto sm:w-auto" style={{ color: MUTED, fontFamily: MONO }}>
             <span style={{ color: EMERALD }}>+{snap!.stats!.added}</span>{" "}
             <span style={{ color: ROSE }}>−{snap!.stats!.removed}</span> code changes
           </span>
@@ -876,14 +995,14 @@ function DiffContent() {
 
       {/* Notes row — shown if either run has notes */}
       {(diff.v1.notes || diff.v2.notes) && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {[{ tag: v1, notes: diff.v1.notes }, { tag: v2, notes: diff.v2.notes }].map(({ tag, notes }) => (
             <div key={tag}
               className="flex items-start gap-2 rounded-lg px-3 py-2"
               style={{ background: SURF, border: `1px solid ${BORDER}` }}>
               <span className="text-[10px] font-bold uppercase tracking-widest shrink-0 mt-0.5" style={{ color: MUTED }}>Notes</span>
               <span className="text-xs leading-relaxed" style={{ color: notes ? TEXT + "CC" : MUTED, fontStyle: notes ? "normal" : "italic" }}>
-                {notes || "—"}
+                {notes || "-"}
               </span>
             </div>
           ))}
@@ -893,8 +1012,8 @@ function DiffContent() {
       {/* AI Summary */}
       <div className="rounded-xl p-5"
         style={{
-          background: "linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(59,130,246,0.10) 100%)",
-          border: "1px solid rgba(167,139,250,0.30)",
+          background: "rgba(124, 58, 237, 0.12)",
+          border: "1px solid rgba(167,139,250,0.28)",
         }}>
         <div className="flex items-start gap-4">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
@@ -904,7 +1023,7 @@ function DiffContent() {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#C4B5FD" }}>
-                GPT-4o-mini · Behavioral Analysis
+                Behavioral analysis
               </span>
               <span className="text-[10px] px-1.5 py-0.5 rounded"
                 style={{ color: "#7C3AED", background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.25)", fontFamily: MONO }}>
@@ -917,12 +1036,12 @@ function DiffContent() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-0" style={{ borderBottom: `1px solid ${BORDER}` }}>
+      <div className="-mx-1 flex min-w-0 gap-0 overflow-x-auto pb-px sm:mx-0" style={{ borderBottom: `1px solid ${BORDER}` }}>
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = tab === id;
           return (
             <button key={id} onClick={() => setTab(id)}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px"
+              className="flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px sm:px-5"
               style={{ borderBottomColor: active ? PURPLE : "transparent", color: active ? TEXT : MUTED }}>
               <Icon size={13} style={{ color: active ? PURPLE : MUTED }} />
               {label}
@@ -967,11 +1086,11 @@ function DiffContent() {
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded ml-auto" style={{ color: EMERALD, background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.3)" }}>identical</span>
                   )}
                 </div>
-                <div className="grid grid-cols-2 divide-x" style={{ divideColor: BORDER } as any}>
-                  {[{ label: v1, text: text1 as string, snap: active1 }, { label: v2, text: text2 as string, snap: active2 }].map(({ label, text, snap: activeVar }) => (
-                    <div key={label} className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2">
+                  {[{ label: v1, text: text1 as string, snap: active1 }, { label: v2, text: text2 as string, snap: active2 }].map(({ label, text, snap: activeVar }, i) => (
+                    <div key={label} className={`min-w-0 p-4 ${i === 0 ? "border-b sm:border-b-0 sm:border-r" : ""}`} style={{ borderColor: BORDER }}>
                       <p className="text-[10px] font-bold uppercase tracking-widest mb-2 font-mono" style={{ color: MUTED }}>
-                        {label} {activeVar && <span style={{ color: PURPLE }}>— {activeVar}</span>}
+                        {label} {activeVar && <span style={{ color: PURPLE }}>: {activeVar}</span>}
                       </p>
                       <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words"
                         style={{ fontFamily: MONO, color: text ? "#C9D1D9" : MUTED }}>
@@ -1001,7 +1120,8 @@ function DiffContent() {
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded ml-auto" style={{ color: EMERALD, background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.3)" }}>identical</span>
                   )}
                 </div>
-                <table className="w-full text-xs font-mono">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[280px] text-xs font-mono">
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
                       <th className="px-4 py-2 text-left" style={{ color: MUTED, width: "120px" }}>Key</th>
@@ -1015,13 +1135,14 @@ function DiffContent() {
                       return (
                         <tr key={k} style={{ borderBottom: `1px solid ${BORDER}`, background: diff ? "rgba(255,122,150,0.04)" : undefined }}>
                           <td className="px-4 py-2" style={{ color: MUTED }}>{k}</td>
-                          <td className="px-4 py-2" style={{ color: diff ? ROSE : "text-slate-300" }}>{String(m1[k] ?? "—")}</td>
-                          <td className="px-4 py-2" style={{ color: diff ? EMERALD : "text-slate-300" }}>{String(m2[k] ?? "—")}</td>
+                          <td className="px-4 py-2" style={{ color: diff ? ROSE : "text-slate-300" }}>{String(m1[k] ?? "-")}</td>
+                          <td className="px-4 py-2" style={{ color: diff ? EMERALD : "text-slate-300" }}>{String(m2[k] ?? "-")}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+              </div>
               </div>
             );
           })()}

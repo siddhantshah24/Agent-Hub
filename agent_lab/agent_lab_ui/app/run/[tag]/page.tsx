@@ -13,6 +13,8 @@ import {
   ThumbsUp, ThumbsDown, Send, Sparkles, Download,
   CheckCheck,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { VeraMascot } from "@/components/vera";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -23,7 +25,8 @@ const AMB     = "#F59E0B";
 const SURFACE = "#231F3A";
 const BORDER  = "#3D3860";
 const MUTED   = "#9B97BB";
-const BG      = "#0D0B1A";
+/** Inline panels: dark purple (aligned with app shell, not pure black) */
+const BG      = "#1a1628";
 const MONO    = "var(--font-mono), 'JetBrains Mono', monospace";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -65,12 +68,19 @@ interface TraceInfo {
   latency_s?: number; total_cost?: number;
   langfuse_url?: string; error?: string;
 }
+interface TracesApiResponse {
+  traces?: TraceInfo[];
+  tag?: string;
+  found?: number;
+  langfuse_available?: boolean;
+  error?: string;
+}
 
 type TabId = "samples" | "traces" | "snapshot";
 
 // ── Stat Card ──────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, icon: Icon, color }: {
-  label: string; value: string; sub?: string; icon: React.ElementType; color: string;
+  label: string; value: string; sub?: string; icon: LucideIcon; color: string;
 }) {
   return (
     <div className="p-5 rounded-xl flex flex-col gap-3" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
@@ -88,7 +98,7 @@ function StatCard({ label, value, sub, icon: Icon, color }: {
 
 // ── Tab button ─────────────────────────────────────────────────────────────────
 function Tab({ active, icon: Icon, label, onClick }: {
-  active: boolean; icon: React.ElementType; label: string; onClick: () => void;
+  active: boolean; icon: LucideIcon; label: string; onClick: () => void;
 }) {
   return (
     <button
@@ -274,7 +284,6 @@ function TraceCard({ sample, trace }: { sample: Sample; trace: TraceInfo | undef
           </div>
         )}
 
-        {/* Langfuse link */}
         {trace?.langfuse_url && (
           <a href={trace.langfuse_url} target="_blank" rel="noopener"
             onClick={e => e.stopPropagation()}
@@ -328,10 +337,10 @@ function TraceCard({ sample, trace }: { sample: Sample; trace: TraceInfo | undef
               <div className="rounded-lg px-3 py-4 text-center" style={{ background: "#131122", border: `1px solid ${BORDER}` }}>
                 <AlertCircle size={16} className="mx-auto mb-1" style={{ color: MUTED }} />
                 <p className="text-xs" style={{ color: MUTED }}>
-                  {trace.error ? `Trace error: ${trace.error}` : "No Langfuse trace found for this sample"}
+                  {trace.error ? `Trace error: ${trace.error}` : "No trace found for this sample"}
                 </p>
                 <p className="text-[10px] mt-1" style={{ color: MUTED }}>
-                  Make sure Langfuse is running and this eval was run with tracing enabled
+                  Enable tracing in your eval environment and re-run if you expect execution data here.
                 </p>
               </div>
             ) : (
@@ -345,17 +354,18 @@ function TraceCard({ sample, trace }: { sample: Sample; trace: TraceInfo | undef
 }
 
 // ── Traces tab ─────────────────────────────────────────────────────────────────
-function TracesTab({ samples, traces, tracesLoading, tag }: {
+function TracesTab({ samples, traces, tracesLoading, tracesApiError, tag }: {
   samples: Sample[];
   traces: Record<number, TraceInfo>;
   tracesLoading: boolean;
+  tracesApiError: string | null;
   tag: string;
 }) {
   return (
     <div className="p-5 space-y-2">
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs" style={{ color: MUTED }}>
-          Click any row to expand the full execution chain pulled from Langfuse.
+          Click any row to expand the full execution chain when traces are available.
         </p>
         {tracesLoading && (
           <div className="flex items-center gap-2 text-xs" style={{ color: MUTED }}>
@@ -369,6 +379,11 @@ function TracesTab({ samples, traces, tracesLoading, tag }: {
           </span>
         )}
       </div>
+      {tracesApiError && (
+        <p className="text-xs rounded-lg px-3 py-2 mb-2" style={{ color: ROSE, background: "rgba(255,122,150,0.08)", border: "1px solid rgba(255,122,150,0.2)" }}>
+          {tracesApiError}
+        </p>
+      )}
 
       {samples.length === 0 ? (
         <div className="flex items-center justify-center h-32">
@@ -379,7 +394,7 @@ function TracesTab({ samples, traces, tracesLoading, tag }: {
           <TraceCard
             key={s.sample_idx}
             sample={s}
-            trace={tracesLoading ? undefined : traces[s.sample_idx]}
+            trace={tracesLoading ? undefined : (traces[s.sample_idx] ?? { sample_idx: s.sample_idx, found: false })}
           />
         ))
       )}
@@ -574,8 +589,8 @@ function SuggestionCard({
 
   const typeLabel: Record<string, string> = {
     system_prompt: "System Prompt Change",
-    model_config: "Model Config — Manual Edit",
-    tool_config: "Tool Config — Manual Edit",
+    model_config: "Model config (manual edit)",
+    tool_config: "Tool config (manual edit)",
   };
   const typeColor: Record<string, string> = {
     system_prompt: "#A78BFA",
@@ -734,7 +749,7 @@ function SuggestionPanel({ tag, project }: { tag: string; project: string }) {
         <div className="px-5 py-8 flex flex-col items-center gap-2 text-center">
           <Sparkles size={24} style={{ color: `${PURPLE}50` }} />
           <p className="text-sm" style={{ color: MUTED }}>
-            Click <strong className="text-slate-300">Generate Suggestions</strong> to let GPT-4o-mini analyse
+            Click <strong className="text-slate-300">Generate Suggestions</strong> to let the OpenAI API analyse
             the evaluation results and human feedback, then suggest improvements to the system prompt,
             model configuration, or tools.
           </p>
@@ -760,7 +775,7 @@ function SuggestionPanel({ tag, project }: { tag: string; project: string }) {
 
 // ── Section header ─────────────────────────────────────────────────────────────
 function SectionHeader({ icon: Icon, color, title, badge }: {
-  icon: React.ElementType; color: string; title: string; badge?: React.ReactNode;
+  icon: LucideIcon; color: string; title: string; badge?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: `1px solid ${BORDER}`, background: "#1A1729" }}>
@@ -997,13 +1012,20 @@ export default function RunDetailPage() {
   const [snap,    setSnap]    = useState<SnapshotData | null>(null);
   const [traces,  setTraces]  = useState<Record<number, TraceInfo>>({});
   const [tracesLoading, setTracesLoading] = useState(true);
+  const [tracesApiError, setTracesApiError] = useState<string | null>(null);
   const [tab,     setTab]     = useState<TabId>("samples");
   const [loading, setLoading] = useState(true);
 
-  const pq = project !== "default" ? `?project=${encodeURIComponent(project)}` : "";
-
   // Load run meta, samples, snapshot in parallel
   useEffect(() => {
+    const pq = project !== "default" ? `?project=${encodeURIComponent(project)}` : "";
+    setLoading(true);
+    setRun(null);
+    setSamples([]);
+    setSnap(null);
+    setTraces({});
+    setTracesApiError(null);
+    setTracesLoading(true);
     Promise.all([
       fetch(`${API}/api/versions${pq}`).then(r => r.json()),
       fetch(`${API}/api/samples/${encodeURIComponent(tag)}${pq}`).then(r => r.json()).catch(() => []),
@@ -1014,23 +1036,48 @@ export default function RunDetailPage() {
       setSamples(Array.isArray(sampleData) ? sampleData : []);
       setSnap(snapData);
       setLoading(false);
+    }).catch(() => {
+      setRun(null);
+      setSamples([]);
+      setSnap(null);
+      setLoading(false);
     });
   }, [tag, project]);
 
-  // Load Langfuse traces separately (slower — don't block the page)
+  // Load traces after we know how many samples this run has (API sizes batches correctly).
+  // Use only primitive deps — ``run`` / ``samples`` objects change identity every render and break React's effect dependency rules.
+  const samplesLen = samples.length;
+  const runTotalCases = run?.total_cases ?? 0;
+  const runVersionTag = run?.version_tag ?? "";
   useEffect(() => {
+    if (loading || !runVersionTag) return;
+    const n = Math.max(samplesLen, runTotalCases);
+    if (n <= 0) {
+      setTraces({});
+      setTracesApiError(null);
+      setTracesLoading(false);
+      return;
+    }
     setTracesLoading(true);
-    const pqSep = pq ? pq : "";
-    fetch(`${API}/api/traces/${encodeURIComponent(tag)}${pqSep}`)
-      .then(r => r.ok ? r.json() : null)
+    setTracesApiError(null);
+    const qs = new URLSearchParams();
+    qs.set("count", String(n));
+    if (project !== "default") qs.set("project", project);
+    const q = qs.toString();
+    fetch(`${API}/api/traces/${encodeURIComponent(tag)}?${q}`)
+      .then(r => r.ok ? r.json() as Promise<TracesApiResponse> : null)
       .then(data => {
         const map: Record<number, TraceInfo> = {};
         (data?.traces ?? []).forEach((t: TraceInfo) => { map[t.sample_idx] = t; });
         setTraces(map);
+        setTracesApiError(data?.error && !data?.langfuse_available ? data.error : null);
         setTracesLoading(false);
       })
-      .catch(() => setTracesLoading(false));
-  }, [tag, project]);
+      .catch(() => {
+        setTracesLoading(false);
+        setTracesApiError("Failed to reach trace API");
+      });
+  }, [tag, project, loading, runVersionTag, samplesLen, runTotalCases]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-72">
@@ -1061,6 +1108,7 @@ export default function RunDetailPage() {
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
+            <VeraMascot size={40} showFootnote={false} className="hidden sm:block" title="VERA" />
             <h1 className="text-2xl font-bold tracking-tight text-slate-200">
               Run: <span className="font-mono" style={{ color: PURPLE }}>{tag}</span>
             </h1>
@@ -1136,7 +1184,7 @@ export default function RunDetailPage() {
             />
             <StatCard
               label="Context Precision"
-              value={run.avg_ragas_precision != null ? run.avg_ragas_precision.toFixed(3) : "—"}
+              value={run.avg_ragas_precision != null ? run.avg_ragas_precision.toFixed(3) : "-"}
               sub="retrieval ranking quality"
               icon={ScanSearch}
               color={
@@ -1207,6 +1255,7 @@ export default function RunDetailPage() {
             samples={samples}
             traces={traces}
             tracesLoading={tracesLoading}
+            tracesApiError={tracesApiError}
             tag={tag}
           />
         )}

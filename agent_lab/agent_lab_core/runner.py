@@ -17,6 +17,7 @@ import json
 import shutil
 import sys
 import time
+import warnings
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -713,12 +714,21 @@ def run_evaluation(
             trace_id: Optional[str] = None
             if langfuse_handler:
                 try:
-                    trace_id = getattr(langfuse_handler, "trace_id", None)
+                    tr = getattr(langfuse_handler, "trace", None)
+                    if tr is not None:
+                        tid = getattr(tr, "id", None)
+                        trace_id = str(tid) if tid is not None else None
                     if trace_id is None:
-                        # Newer Langfuse SDK exposes it via get_trace_id()
                         get_tid = getattr(langfuse_handler, "get_trace_id", None)
                         if callable(get_tid):
-                            trace_id = get_tid()
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("ignore", DeprecationWarning)
+                                tid = get_tid()
+                            trace_id = str(tid) if tid is not None else None
+                except Exception:
+                    trace_id = None
+                try:
+                    langfuse_handler.flush()
                 except Exception:
                     pass
 

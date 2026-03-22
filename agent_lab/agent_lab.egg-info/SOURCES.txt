@@ -8,6 +8,7 @@ agent_lab.egg-info/top_level.txt
 agent_lab_core/__init__.py
 agent_lab_core/cli.py
 agent_lab_core/db.py
+agent_lab_core/langfuse_util.py
 agent_lab_core/parser.py
 agent_lab_core/runner.py
 agent_lab_core/server.py

@@ -126,15 +126,11 @@
 @layer base {
   * { @apply border-border outline-ring/50; }
   body { @apply bg-background text-foreground; }
-  html { @apply font-sans; }
-}
-
-/* ── Background: subtle grid + top purple glow ──────────────────────────────── */
-.bg-grid {
-  background-image:
-    linear-gradient(rgba(167, 139, 250, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(167, 139, 250, 0.05) 1px, transparent 1px);
-  background-size: 40px 40px;
+  html {
+    @apply font-sans;
+    overflow-x: hidden;
+    max-width: 100%;
+  }
 }
 
 /* ── Cards ──────────────────────────────────────────────────────────────────── */
@@ -148,17 +144,24 @@
   border-color: rgba(167, 139, 250, 0.50);
 }
 
-/* ── Diff line types ────────────────────────────────────────────────────────── */
+/* ── Diff line types (side-by-side: red = removed, green = added) ───────────── */
 .diff-delete {
-  background-color: rgba(251, 113, 133, 0.10);
-  border-left: 2px solid rgba(251, 113, 133, 0.70);
+  background-color: rgba(185, 28, 28, 0.22);
+  border-left: 3px solid rgb(248, 113, 113);
+  color: #fecaca;
 }
 .diff-insert {
-  background-color: rgba(52, 211, 153, 0.08);
-  border-left: 2px solid rgba(52, 211, 153, 0.60);
+  background-color: rgba(21, 128, 61, 0.22);
+  border-left: 3px solid rgb(74, 222, 128);
+  color: #bbf7d0;
 }
 .diff-equal {
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
+  color: rgb(203, 213, 225);
+}
+.diff-side-pad {
+  white-space: pre;
+  overflow-x: auto;
 }
 
 /* ── Nav links ───────────────────────────────────────────────────────────────── */
@@ -188,4 +191,66 @@
   background: rgba(251, 113, 133, 0.12);
   color: #FB7185;
   border: 1px solid rgba(251, 113, 133, 0.25);
+}
+
+/* ── VERA mascot (developer-friendly cyan + purple) ───────────────────────── */
+:root {
+  --dev-cyan: #22d3ee;
+  --dev-cyan-muted: rgba(34, 211, 238, 0.28);
+}
+
+@keyframes vera-mascot-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.vera-mascot--float {
+  animation: vera-mascot-float 4.2s ease-in-out infinite;
+}
+
+/* Landing hero: staggered entrance (respects motion preferences via Tailwind where used) */
+@keyframes landing-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-hero-animate > * {
+  animation: landing-hero-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.landing-hero-animate > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.landing-hero-animate > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.landing-hero-animate > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.landing-hero-animate > *:nth-child(4) {
+  animation-delay: 0.18s;
+}
+.landing-hero-animate > *:nth-child(5) {
+  animation-delay: 0.24s;
+}
+.landing-hero-animate > *:nth-child(6) {
+  animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-animate > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }

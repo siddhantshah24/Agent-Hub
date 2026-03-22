@@ -19,7 +19,6 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from groq import Groq
 from openai import OpenAI
 
 from .db import (
@@ -27,6 +26,7 @@ from .db import (
     upsert_feedback, get_feedback_for_run, get_all_feedback_for_export,
     init_db,
 )
+from .langfuse_util import get_langfuse_trace_api_client, sync_langfuse_env_for_client
 
 app = FastAPI(title="Agent Lab API", version="0.1.0")
 
@@ -73,8 +73,91 @@ def _db_for_project(project: Optional[str]) -> Path:
     return db
 
 
-def _groq_client() -> Groq:
-    return Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+def _langfuse_trace_full_to_payload(full: object, sample_idx: int, langfuse_host: str) -> dict:
+    """Turn a Langfuse trace GET response into the UI payload (execution chain, etc.)."""
+    system_prompt: Optional[str] = None
+    tool_calls: list[dict] = []
+    llm_steps: list[dict] = []
+    execution_chain: list[dict] = []
+
+    obs_sorted = sorted(
+        full.observations or [],
+        key=lambda o: getattr(o, "start_time", None) or datetime.min,
+    )
+
+    for obs in obs_sorted:
+        obs_type = str(getattr(obs, "type", ""))
+        obs_name = getattr(obs, "name", "") or ""
+        obs_input = getattr(obs, "input", None)
+        obs_output = getattr(obs, "output", None)
+
+        if obs_type == "GENERATION":
+            messages = obs_input if isinstance(obs_input, list) else []
+            for msg in messages:
+                if isinstance(msg, dict) and msg.get("role") == "system" and not system_prompt:
+                    system_prompt = msg.get("content", "")
+
+            requested_tools: list[dict] = []
+            final_content = ""
+            if isinstance(obs_output, dict):
+                for tc in obs_output.get("tool_calls", []):
+                    name = tc.get("name", "?")
+                    args = tc.get("args", {})
+                    args_str = ", ".join(f"{k}={repr(v)}" for k, v in args.items())
+                    requested_tools.append({"name": name, "args": args, "display": f"{name}({args_str})"})
+                final_content = obs_output.get("content", "")
+
+            chain_entry: dict = {
+                "type": "llm",
+                "model": getattr(obs, "model", ""),
+                "tools_requested": requested_tools,
+                "content": final_content,
+                "is_final": len(requested_tools) == 0 and bool(final_content),
+            }
+            execution_chain.append(chain_entry)
+
+            tool_names = [t["display"] for t in requested_tools]
+            llm_steps.append({
+                "model": getattr(obs, "model", ""),
+                "tools_called": tool_names,
+                "response": final_content,
+            })
+
+        elif obs_type == "TOOL":
+            out_text = ""
+            if isinstance(obs_output, dict):
+                out_text = obs_output.get("kwargs", {}).get("content",
+                           json.dumps(obs_output, default=str)[:300])
+            elif obs_output is not None:
+                out_text = str(obs_output)[:300]
+
+            in_text = json.dumps(obs_input, default=str) if obs_input else "{}"
+
+            execution_chain.append({
+                "type": "tool",
+                "name": obs_name,
+                "input": in_text,
+                "output": out_text,
+            })
+            tool_calls.append({"name": obs_name, "input": in_text, "output": out_text})
+
+    return {
+        "sample_idx": sample_idx,
+        "found": True,
+        "trace_id": getattr(full, "id", None),
+        "system_prompt": system_prompt,
+        "tool_calls": tool_calls,
+        "llm_steps": llm_steps,
+        "execution_chain": execution_chain,
+        "latency_s": getattr(full, "latency", None),
+        "total_cost": getattr(full, "total_cost", None),
+        "langfuse_url": f"{langfuse_host.rstrip('/')}/trace/{getattr(full, 'id', '')}",
+    }
+
+
+def _openai_chat_model() -> str:
+    """Model id for OpenAI Chat Completions (diff summary + suggestions). Override with OPENAI_MODEL."""
+    return (os.environ.get("OPENAI_MODEL") or "gpt-4o-mini").strip() or "gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +287,7 @@ def get_snapshot(tag: str, project: Optional[str] = None):
 
 @app.get("/api/diff/{v1}/{v2}")
 def get_diff(v1: str, v2: str, project: Optional[str] = None):
-    """Metric deltas + sample regressions + GPT-4o-mini behavioral summary."""
+    """Metric deltas + sample regressions + OpenAI behavioral summary."""
     db = _db_for_project(project)
     if not db.exists():
         raise HTTPException(404, "No database found.")
@@ -388,7 +471,8 @@ def get_samples_compare(v1: str, v2: str, project: Optional[str] = None):
 
 def _generate_summary(v1, v2, run1, run2, deltas, regressions, improvements) -> str:
     try:
-        client = _groq_client()
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+        model = _openai_chat_model()
         reg_lines = "\n".join(
             f"  - Q: {r['input']!r}  expected: {r['expected']!r}  "
             f"{v1}→{r.get(v1+'_got','?')!r}  {v2}→{r.get(v2+'_got','?')!r}"
@@ -417,7 +501,7 @@ Improvements (fail→pass in {v2}):
 Write 2-3 concise sentences analyzing what behaviorally changed. Be specific and actionable."""
 
         resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.3,
@@ -428,148 +512,126 @@ Write 2-3 concise sentences analyzing what behaviorally changed. Be specific and
 
 
 @app.get("/api/traces/{tag}")
-def get_traces_for_tag(tag: str, count: int = 20):
+def get_traces_for_tag(
+    tag: str,
+    count: int = 0,
+    project: Optional[str] = None,
+):
     """
     Fetch full Langfuse trace data for every sample of a version tag.
-    Returns gracefully if Langfuse is not reachable (does not 500 or hang).
+
+    ``count`` (optional): minimum number of sample indices to resolve (0 = infer from DB only).
+    The server uses max(sample rows, run.total_cases, ``count``) so all samples are covered.
+
+    Resolution order per sample:
+    1) ``langfuse_trace_id`` stored in SQLite at eval time (reliable on Langfuse Cloud)
+    2) Fallback: scan ``trace.list`` for names ``agentlab/{tag}/sample-{idx}`` (legacy / local)
     """
-    # Load .env from cwd or parent so Langfuse keys are available when server is called
     from dotenv import load_dotenv
     load_dotenv(find_dotenv(usecwd=True), override=False)
+    sync_langfuse_env_for_client()
 
     try:
-        from langfuse import get_client
-        lf = get_client()
+        lf = get_langfuse_trace_api_client()
     except Exception as e:
         return {"traces": [], "tag": tag, "langfuse_available": False, "error": str(e)}
 
-    # Collect trace stubs (name → trace) by paging through the trace list
+    db = _db_for_project(project)
+    sample_rows: list[dict] = []
+    if db.exists():
+        try:
+            sample_rows = get_samples_for_tag(db, tag)
+        except Exception:
+            sample_rows = []
+
+    id_by_idx: dict[int, str] = {}
+    for row in sample_rows:
+        tid = row.get("langfuse_trace_id")
+        if tid:
+            idx = int(row["sample_idx"])
+            id_by_idx[idx] = str(tid)
+
+    n_from_rows = (max(int(s["sample_idx"]) for s in sample_rows) + 1) if sample_rows else 0
+    n_from_run = 0
+    if db.exists():
+        run_row = get_run_by_tag(db, tag)
+        if run_row:
+            n_from_run = int(run_row.get("total_cases") or 0)
+
+    count_clamped = max(0, min(int(count), 2000))
+    n_samples = max(n_from_rows, n_from_run, count_clamped)
+
+    def _ids_cover_indices() -> bool:
+        return n_samples > 0 and all(i in id_by_idx for i in range(n_samples))
+
+    # Legacy: collect trace stubs by run name (works well on small local deployments)
     trace_map: dict[int, object] = {}
-    page = 1
-    while len(trace_map) < count:
-        try:
-            resp = lf.api.trace.list(limit=100, page=page)
-        except Exception as e:
-            # Langfuse is running but trace list failed — still return gracefully
-            return {"traces": [], "tag": tag, "langfuse_available": False, "error": f"trace.list failed: {e}"}
+    if not _ids_cover_indices():
+        page = 1
+        max_pages = 500
+        while len(trace_map) < n_samples and page <= max_pages:
+            try:
+                resp = lf.api.trace.list(limit=100, page=page)
+            except Exception as e:
+                if not id_by_idx:
+                    return {"traces": [], "tag": tag, "langfuse_available": False, "error": f"trace.list failed: {e}"}
+                break
 
-        if not getattr(resp, "data", None):
-            break
+            if not getattr(resp, "data", None):
+                break
 
-        prefix = f"agentlab/{tag}/sample-"
-        for t in resp.data:
-            if t.name and t.name.startswith(prefix):
-                try:
-                    idx = int(t.name.rsplit("-", 1)[-1])
-                    if idx not in trace_map:
-                        trace_map[idx] = t
-                except ValueError:
-                    pass
+            prefix = f"agentlab/{tag}/sample-"
+            for t in resp.data:
+                if t.name and t.name.startswith(prefix):
+                    try:
+                        idx = int(t.name.rsplit("-", 1)[-1])
+                        if idx not in trace_map:
+                            trace_map[idx] = t
+                    except ValueError:
+                        pass
 
-        if len(resp.data) < 100:
-            break
-        page += 1
+            if len(resp.data) < 100:
+                break
+            page += 1
 
-    langfuse_host = os.environ.get("LANGFUSE_HOST", "http://localhost:3000")
+    if n_samples <= 0:
+        return {"traces": [], "tag": tag, "found": 0, "langfuse_available": True}
+
+    langfuse_host = (
+        os.environ.get("LANGFUSE_HOST")
+        or os.environ.get("LANGFUSE_BASE_URL")
+        or "http://localhost:3000"
+    ).strip().rstrip("/")
     results: list[dict] = []
+    found_n = 0
 
-    for idx in range(count):
-        stub = trace_map.get(idx)
-        if stub is None:
-            results.append({"sample_idx": idx, "found": False})
+    for idx in range(n_samples):
+        full = None
+        last_err: Optional[str] = None
+
+        tid = id_by_idx.get(idx)
+        if tid:
+            try:
+                full = lf.api.trace.get(tid)
+            except Exception as e:
+                last_err = str(e)
+
+        if full is None:
+            stub = trace_map.get(idx)
+            if stub is not None:
+                try:
+                    full = lf.api.trace.get(stub.id)
+                except Exception as e:
+                    last_err = str(e)
+
+        if full is None:
+            results.append({"sample_idx": idx, "found": False, **({"error": last_err} if last_err else {})})
             continue
 
-        try:
-            full = lf.api.trace.get(stub.id)
-        except Exception as e:
-            results.append({"sample_idx": idx, "found": False, "error": str(e)})
-            continue
+        found_n += 1
+        results.append(_langfuse_trace_full_to_payload(full, idx, langfuse_host))
 
-        system_prompt: Optional[str] = None
-        tool_calls: list[dict] = []
-        llm_steps: list[dict] = []
-        # Full interleaved execution chain: alternating LLM and TOOL steps
-        execution_chain: list[dict] = []
-
-        obs_sorted = sorted(
-            full.observations or [],
-            key=lambda o: getattr(o, "start_time", None) or datetime.min,
-        )
-
-        for obs in obs_sorted:
-            obs_type = str(getattr(obs, "type", ""))
-            obs_name = getattr(obs, "name", "") or ""
-            obs_input = getattr(obs, "input", None)
-            obs_output = getattr(obs, "output", None)
-
-            if obs_type == "GENERATION":
-                messages = obs_input if isinstance(obs_input, list) else []
-                for msg in messages:
-                    if isinstance(msg, dict) and msg.get("role") == "system" and not system_prompt:
-                        system_prompt = msg.get("content", "")
-
-                # Requested tool calls from this LLM turn
-                requested_tools: list[dict] = []
-                final_content = ""
-                if isinstance(obs_output, dict):
-                    for tc in obs_output.get("tool_calls", []):
-                        name = tc.get("name", "?")
-                        args = tc.get("args", {})
-                        args_str = ", ".join(f"{k}={repr(v)}" for k, v in args.items())
-                        requested_tools.append({"name": name, "args": args, "display": f"{name}({args_str})"})
-                    final_content = obs_output.get("content", "")
-
-                # Add to chain
-                chain_entry: dict = {
-                    "type": "llm",
-                    "model": getattr(obs, "model", ""),
-                    "tools_requested": requested_tools,
-                    "content": final_content,
-                    "is_final": len(requested_tools) == 0 and bool(final_content),
-                }
-                execution_chain.append(chain_entry)
-
-                # Legacy flat lists for backward compat
-                tool_names = [t["display"] for t in requested_tools]
-                llm_steps.append({
-                    "model": getattr(obs, "model", ""),
-                    "tools_called": tool_names,
-                    "response": final_content,
-                })
-
-            elif obs_type == "TOOL":
-                # Unwrap LangChain ToolMessage kwargs for the output
-                out_text = ""
-                if isinstance(obs_output, dict):
-                    out_text = obs_output.get("kwargs", {}).get("content",
-                               json.dumps(obs_output, default=str)[:300])
-                elif obs_output is not None:
-                    out_text = str(obs_output)[:300]
-
-                in_text = json.dumps(obs_input, default=str) if obs_input else "{}"
-
-                execution_chain.append({
-                    "type": "tool",
-                    "name": obs_name,
-                    "input": in_text,
-                    "output": out_text,
-                })
-                tool_calls.append({"name": obs_name, "input": in_text, "output": out_text})
-
-        results.append({
-            "sample_idx": idx,
-            "found": True,
-            "trace_id": full.id,
-            "system_prompt": system_prompt,
-            "tool_calls": tool_calls,
-            "llm_steps": llm_steps,
-            "execution_chain": execution_chain,
-            "latency_s": getattr(full, "latency", None),
-            "total_cost": getattr(full, "total_cost", None),
-            "langfuse_url": f"{langfuse_host}/trace/{full.id}",
-        })
-
-    return {"traces": results, "tag": tag, "found": len(trace_map)}
+    return {"traces": results, "tag": tag, "found": found_n, "langfuse_available": True}
 
 
 def find_dotenv(usecwd=False):
@@ -628,7 +690,7 @@ def get_feedback(tag: str, project: Optional[str] = None):
 def suggest_improvements(tag: str, project: Optional[str] = None):
     """
     Given the current agent snapshot + eval results + human feedback,
-    ask GPT-4o-mini to suggest concrete improvements.
+    ask the configured OpenAI chat model to suggest concrete improvements.
     """
     db = _db_for_project(project)
     run = get_run_by_tag(db, tag)
@@ -709,7 +771,7 @@ Return ONLY a JSON array of suggestion objects, no other text."""
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
     try:
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=_openai_chat_model(),
             messages=[{"role": "user", "content": prompt_text}],
             temperature=0.3,
             response_format={"type": "json_object"},
